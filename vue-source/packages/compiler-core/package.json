@@ -1,0 +1,9 @@
+{
+  "name": "@vue-source/compiler-core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo \"@vue-source/compiler-core has no build script yet.\""
+  }
+}

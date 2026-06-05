@@ -1,0 +1,28 @@
+{
+  "name": "@vue-source/reactivity",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/reactivity.cjs",
+  "module": "./dist/reactivity.esm.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/reactivity.esm.js",
+      "require": {
+        "production": "./dist/reactivity.cjs.prod",
+        "default": "./dist/reactivity.cjs"
+      }
+    }
+  },
+  "dependencies": {
+    "@vue-source/shared": "workspace:*"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.js --pkg reactivity && node ../../scripts/build-types.js --pkg reactivity"
+  },
+  "buildOptions": {
+    "formats": ["esm", "cjs", "esm-prod", "cjs-prod"]
+  }
+}

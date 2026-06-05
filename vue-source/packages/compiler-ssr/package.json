@@ -1,0 +1,9 @@
+{
+  "name": "@vue-source/compiler-ssr",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo \"@vue-source/compiler-ssr has no build script yet.\""
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "@front/vue-source",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "echo \"vue-source sub-monorepo is initialized. Run commands inside packages next.\"",
+    "build": "node scripts/build.js && node scripts/build-types.js",
+    "build:esm": "node scripts/build.js --formats esm",
+    "build:cjs": "node scripts/build.js --formats cjs",
+    "build:prod": "node scripts/build.js --formats esm-prod,cjs-prod",
+    "build:types": "node scripts/build-types.js",
+    "build:pkg": "node scripts/build.js --pkg \"$npm_config_pkg\"",
+    "clean": "rimraf --glob packages/*/dist"
+  },
+  "devDependencies": {
+    "@rollup/plugin-alias": "^5.1.1",
+    "@rollup/plugin-commonjs": "^28.0.6",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "esbuild": "^0.25.9",
+    "picocolors": "^1.1.1",
+    "rimraf": "^6.0.1",
+    "rollup": "^4.50.1",
+    "rollup-plugin-esbuild": "^6.2.1",
+    "typescript": "^5.9.2"
+  }
+}

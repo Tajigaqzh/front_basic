@@ -1,0 +1,25 @@
+{
+  "name": "@vue-source/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/shared.cjs",
+  "module": "./dist/shared.esm.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/shared.esm.js",
+      "require": {
+        "production": "./dist/shared.cjs.prod",
+        "default": "./dist/shared.cjs"
+      }
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.js --pkg shared && node ../../scripts/build-types.js --pkg shared"
+  },
+  "buildOptions": {
+    "formats": ["esm", "cjs", "esm-prod", "cjs-prod"]
+  }
+}

@@ -1,0 +1,99 @@
+import { defineConfig } from "vitepress";
+
+export default defineConfig({
+    title: "前端学习文档",
+    description: "按 HTML、CSS、JavaScript、React、Vue 模块整理的学习与项目文档",
+    lang: "zh-CN",
+    themeConfig: {
+        nav: [
+            { text: "首页", link: "/" },
+            { text: "HTML", link: "/html/" },
+            { text: "CSS", link: "/css/" },
+            { text: "JavaScript", link: "/js/" },
+            { text: "React", link: "/react/" },
+            { text: "Vue", link: "/vue/" },
+        ],
+        sidebar: [
+            {
+                text: "时间安排",
+                items: [
+                    { text: "首页", link: "/" },
+                    { text: "复习与项目安排", link: "/review-calendar" },
+                ],
+            },
+            {
+                text: "HTML",
+                items: [
+                    { text: "HTML 模块概览", link: "/html/" },
+                    { text: "base：HTML 基础", link: "/html/base/" },
+                    { text: "semantic：语义化标签", link: "/html/semantic/" },
+                    { text: "form：表单与校验", link: "/html/form/" },
+                    { text: "media：媒体资源与可访问性", link: "/html/media/" },
+                ],
+            },
+            {
+                text: "CSS",
+                items: [
+                    { text: "CSS 模块概览", link: "/css/" },
+                    { text: "base：CSS 基础", link: "/css/base/" },
+                    { text: "layout：布局", link: "/css/layout/" },
+                    { text: "animation：动画", link: "/css/animation/" },
+                    { text: "responsive：响应式", link: "/css/responsive/" },
+                    { text: "performance：性能优化", link: "/css/performance/" },
+                    { text: "engineering：工程化", link: "/css/engineering/" },
+                ],
+            },
+            {
+                text: "JavaScript",
+                items: [
+                    { text: "JavaScript 模块概览", link: "/js/" },
+                    { text: "01 类型运算", link: "/js/01_js_type_operation/" },
+                    { text: "02 语句", link: "/js/02_js_sentence/" },
+                    { text: "03 对象", link: "/js/03_js_object/" },
+                    { text: "04 数组", link: "/js/04_js_array/" },
+                    { text: "05 函数", link: "/js/05_js_function/" },
+                    { text: "06 类", link: "/js/06_js_class/" },
+                    { text: "07 模块", link: "/js/07_js_module/" },
+                    { text: "08 库", link: "/js/08_js_library/" },
+                    { text: "09 Generator 与 Iterator", link: "/js/09_js_generator_iterator/" },
+                    { text: "10 异步", link: "/js/10_js_async/" },
+                    { text: "11 元编程", link: "/js/11_js_Metaprogramming/" },
+                    { text: "12 工程化", link: "/js/12_js_engineering/" },
+                    { text: "13 网络", link: "/js/13_js_network/" },
+                    { text: "14 缓存", link: "/js/14_js_cache/" },
+                    { text: "15 Event Loop", link: "/js/15_js_eventLoop/" },
+                    { text: "16 WebRTC", link: "/js/16_webRTC/" },
+                    { text: "17 Canvas", link: "/js/17_js_canvas/" },
+                    { text: "18 3D", link: "/js/18_3d/" },
+                    { text: "19 MicroTask", link: "/js/19_js_mocroTask/" },
+                    { text: "20 Worker", link: "/js/20_js_worker/" },
+                    { text: "21 Wasm", link: "/js/21_js_wasm/" },
+                    { text: "22 AI Chat", link: "/js/22_js_aiChat/" },
+                ],
+            },
+            {
+                text: "React",
+                items: [
+                    { text: "React 模块概览", link: "/react/" },
+                    { text: "core：React 使用", link: "/react/core/" },
+                    { text: "api：API 示例与面试题", link: "/react/api/" },
+                    { text: "router：路由", link: "/react/router/" },
+                    { text: "source：源码", link: "/react/source/" },
+                    { text: "zustand：状态管理", link: "/react/zustand/" },
+                    { text: "rtkq：数据请求与缓存", link: "/react/rtkq/" },
+                ],
+            },
+            {
+                text: "Vue",
+                items: [
+                    { text: "Vue 模块概览", link: "/vue/" },
+                    { text: "core：Vue 使用", link: "/vue/core/" },
+                    { text: "router：Vue Router", link: "/vue/router/" },
+                    { text: "pinia：状态管理", link: "/vue/pinia/" },
+                    { text: "source：源码", link: "/vue/source/" },
+                    { text: "Reactivity 原理", link: "/vue/source/reactivity-overview" },
+                ],
+            },
+        ],
+    },
+});

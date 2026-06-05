@@ -1,0 +1,16 @@
+{
+  "name": "@front/workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter \"$npm_config_pkg\" build",
+    "build:all": "pnpm -r build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:promise": "vitest run promise/test"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.8"
+  }
+}

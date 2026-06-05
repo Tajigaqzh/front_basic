@@ -1,0 +1,9 @@
+{
+  "name": "@vue-source/compiler-sfc",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo \"@vue-source/compiler-sfc has no build script yet.\""
+  }
+}
