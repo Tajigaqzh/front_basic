@@ -8,14 +8,14 @@
 
 ```mermaid
 flowchart TD
-    A[createComponentInstance] --> B[initProps]
-    A --> C[initSlots]
-    B --> D[setupComponent]
+    A["createComponentInstance"] --> B["initProps"]
+    A --> C["initSlots"]
+    B --> D["setupComponent"]
     C --> D
-    D --> E[setupStatefulComponent]
-    E --> F[执行 setup]
-    F --> G[handleSetupResult]
-    G --> H[finishComponentSetup]
+    D --> E["setupStatefulComponent"]
+    E --> F["run setup"]
+    F --> G["handleSetupResult"]
+    G --> H["finishComponentSetup"]
 ```
 
 ## 关键点

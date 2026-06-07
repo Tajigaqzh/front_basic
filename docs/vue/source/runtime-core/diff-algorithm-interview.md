@@ -85,14 +85,14 @@ Vue 的默认假设是：
 
 ```mermaid
 flowchart TD
-  A[patch n1 n2] --> B{isSameVNodeType?}
-  B -- 否 --> C[卸载旧节点并挂载新节点]
-  B -- 是 --> D[按 vnode 类型分发]
-  D --> E[processElement]
-  D --> F[processComponent]
-  E --> G[patchElement]
-  G --> H[patchChildren]
-  H --> I[patchKeyedChildren 或 patchUnkeyedChildren]
+  A["patch old and new vnode"] --> B{"same vnode type"}
+  B -- no --> C["unmount old and mount new"]
+  B -- yes --> D["dispatch by vnode type"]
+  D --> E["processElement"]
+  D --> F["processComponent"]
+  E --> G["patchElement"]
+  G --> H["patchChildren"]
+  H --> I["patchKeyedChildren or patchUnkeyedChildren"]
 ```
 
 ---
@@ -135,51 +135,51 @@ children 的情况一般有几种：
 
 ```mermaid
 flowchart TD
-  A[旧 children / 新 children] --> B{新的是 text?}
-  B -- 是 --> C{旧的是 array?}
-  C -- 是 --> D[卸载旧数组]
-  C -- 否 --> E[直接更新文本]
+  A["old and new children"] --> B{"new is text"}
+  B -- yes --> C{"old is array"}
+  C -- yes --> D["unmount old array"]
+  C -- no --> E["update text directly"]
   D --> E
 
-  B -- 否 --> F{旧的是 array?}
-  F -- 是 --> G{新的是 array?}
-  G -- 是 --> H[进入 array diff]
-  G -- 否 --> I[卸载旧数组]
+  B -- no --> F{"old is array"}
+  F -- yes --> G{"new is array"}
+  G -- yes --> H["enter array diff"]
+  G -- no --> I["unmount old array"]
 
-  F -- 否 --> J{旧的是 text?}
-  J -- 是 --> K[清空旧文本]
-  J -- 否 --> L[旧的本来就是空]
-  K --> M{新的是 array?}
+  F -- no --> J{"old is text"}
+  J -- yes --> K["clear old text"]
+  J -- no --> L["old is already empty"]
+  K --> M{"new is array"}
   L --> M
-  M -- 是 --> N[挂载新数组]
-  M -- 否 --> O[保持空 children]
+  M -- yes --> N["mount new array"]
+  M -- no --> O["keep empty children"]
 ```
 
 如果你只想先背“源码决策顺序”，可以先记这张速查图：
 
 ```mermaid
 flowchart TD
-  A[patchChildren n1 n2] --> B[读 c1 c2]
-  B --> C[读 prevShapeFlag / shapeFlag / patchFlag]
-  C --> D{patchFlag > 0?}
-  D -- KEYED_FRAGMENT --> E[直接进入 patchKeyedChildren]
-  D -- UNKEYED_FRAGMENT --> F[直接进入 patchUnkeyedChildren]
-  D -- 否 --> G{新 children 是 text?}
-  G -- 是 --> H{旧 children 是 array?}
-  H -- 是 --> I[unmountChildren c1]
-  H -- 否 --> J[hostSetElementText]
+  A["patchChildren"] --> B["read c1 and c2"]
+  B --> C["read shape flags and patchFlag"]
+  C --> D{"patchFlag greater than zero"}
+  D -- keyed --> E["go to patchKeyedChildren"]
+  D -- unkeyed --> F["go to patchUnkeyedChildren"]
+  D -- no --> G{"new children are text"}
+  G -- yes --> H{"old children are array"}
+  H -- yes --> I["unmountChildren c1"]
+  H -- no --> J["hostSetElementText"]
   I --> J
-  G -- 否 --> K{旧 children 是 array?}
-  K -- 是 --> L{新 children 是 array?}
-  L -- 是 --> E
-  L -- 否 --> M[unmountChildren c1]
-  K -- 否 --> N{旧 children 是 text?}
-  N -- 是 --> O[hostSetElementText 空串]
-  N -- 否 --> P[保持空]
-  O --> Q{新 children 是 array?}
+  G -- no --> K{"old children are array"}
+  K -- yes --> L{"new children are array"}
+  L -- yes --> E
+  L -- no --> M["unmountChildren c1"]
+  K -- no --> N{"old children are text"}
+  N -- yes --> O["clear text with hostSetElementText"]
+  N -- no --> P["keep empty"]
+  O --> Q{"new children are array"}
   P --> Q
-  Q -- 是 --> R[mountChildren c2]
-  Q -- 否 --> S[结束]
+  Q -- yes --> R["mountChildren c2"]
+  Q -- no --> S["finish"]
 ```
 
 ### 4.0 文本、数组、空 children 之间是怎么切换的？
@@ -209,8 +209,8 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  O[旧文本 hello] --> U[setElementText]
-  N[新文本 world] --> U
+  O["old text hello"] --> U["setElementText"]
+  N["new text world"] --> U
 ```
 
 #### text -> array
@@ -237,10 +237,10 @@ A B C
 
 ```mermaid
 flowchart LR
-  O[旧文本 hello] --> C[清空文本]
-  C --> M1[挂载 A]
-  C --> M2[挂载 B]
-  C --> M3[挂载 C]
+  O["old text hello"] --> C["clear text"]
+  C --> M1["mount A"]
+  C --> M2["mount B"]
+  C --> M3["mount C"]
 ```
 
 #### array -> text
@@ -266,10 +266,10 @@ A B C
 
 ```mermaid
 flowchart LR
-  O1[旧 A] --> U1[卸载]
-  O2[旧 B] --> U2[卸载]
-  O3[旧 C] --> U3[卸载]
-  U1 --> T[写入文本 hello]
+  O1["old A"] --> U1["unmount"]
+  O2["old B"] --> U2["unmount"]
+  O3["old C"] --> U3["unmount"]
+  U1 --> T["write text hello"]
   U2 --> T
   U3 --> T
 ```
@@ -298,8 +298,8 @@ A B
 
 ```mermaid
 flowchart LR
-  E0[空 children] --> M1[挂载 A]
-  E0 --> M2[挂载 B]
+  E0["empty children"] --> M1["mount A"]
+  E0 --> M2["mount B"]
 ```
 
 #### array -> null
@@ -326,8 +326,8 @@ A B
 
 ```mermaid
 flowchart LR
-  O1[旧 A] --> U1[卸载]
-  O2[旧 B] --> U2[卸载]
+  O1["old A"] --> U1["unmount"]
+  O2["old B"] --> U2["unmount"]
 ```
 
 如果把 children 变化按结果来分，最常见的就是这几类：
@@ -374,14 +374,14 @@ A B C D
 
 ```mermaid
 flowchart LR
-  O1[旧 A] --> P1[patch 复用]
-  N1[新 A] --> P1
+  O1["old A"] --> P1["patch and reuse"]
+  N1["new A"] --> P1
 
-  O2[旧 B] --> P2[patch 复用]
-  N2[新 B] --> P2
+  O2["old B"] --> P2["patch and reuse"]
+  N2["new B"] --> P2
 
-  N3[新 C] --> M1[挂载]
-  N4[新 D] --> M2[挂载]
+  N3["new C"] --> M1["mount"]
+  N4["new D"] --> M2["mount"]
 ```
 
 再看头部新增：
@@ -412,10 +412,10 @@ C D A B
 
 ```mermaid
 flowchart LR
-  N1[新 C] --> M1[挂载到 A 前]
-  N2[新 D] --> M2[挂载到 A 前]
-  O1[旧 A] --> P1[复用]
-  O2[旧 B] --> P2[复用]
+  N1["new C"] --> M1["mount before A"]
+  N2["new D"] --> M2["mount before A"]
+  O1["old A"] --> P1["reuse"]
+  O2["old B"] --> P2["reuse"]
 ```
 
 这里的重点不是“重新创建整个列表”，而是：
@@ -456,14 +456,14 @@ A B
 
 ```mermaid
 flowchart LR
-  O1[旧 A] --> P1[patch 复用]
-  N1[新 A] --> P1
+  O1["old A"] --> P1["patch and reuse"]
+  N1["new A"] --> P1
 
-  O2[旧 B] --> P2[patch 复用]
-  N2[新 B] --> P2
+  O2["old B"] --> P2["patch and reuse"]
+  N2["new B"] --> P2
 
-  O3[旧 C] --> U1[卸载]
-  O4[旧 D] --> U2[卸载]
+  O3["old C"] --> U1["unmount"]
+  O4["old D"] --> U2["unmount"]
 ```
 
 头部删除也是一样，只不过更多是通过尾部同步先缩小区间：
@@ -494,10 +494,10 @@ C D
 
 ```mermaid
 flowchart LR
-  O1[旧 A] --> U1[卸载]
-  O2[旧 B] --> U2[卸载]
-  O3[旧 C] --> P1[复用]
-  O4[旧 D] --> P2[复用]
+  O1["old A"] --> U1["unmount"]
+  O2["old B"] --> U2["unmount"]
+  O3["old C"] --> P1["reuse"]
+  O4["old D"] --> P2["reuse"]
 ```
 
 ### 4.3 完全打乱子节点是怎么 diff 的？
@@ -538,10 +538,10 @@ Vue 会做这几步：
 
 ```mermaid
 flowchart LR
-  OA[旧 A] -->|newIndex 2| M[newIndexToOldIndexMap]
-  OB[旧 B] -->|newIndex 1| M
-  OC[旧 C] -->|newIndex 3| M
-  OD[旧 D] -->|newIndex 0| M
+  OA["old A"] -->|newIndex 2| M["newIndexToOldIndexMap"]
+  OB["old B"] -->|newIndex 1| M
+  OC["old C"] -->|newIndex 3| M
+  OD["old D"] -->|newIndex 0| M
 ```
 
 它对应的新位置关系大致是：
@@ -578,17 +578,17 @@ newIndexToOldIndexMap: 4  2  1  3
 
 ```mermaid
 flowchart TD
-  A[旧节点逐个扫描] --> B{能在新列表中找到同 key 节点?}
-  B -- 否 --> C[卸载旧节点]
-  B -- 是 --> D[复用旧节点并 patch]
-  D --> E[记录到 newIndexToOldIndexMap]
-  E --> F{是否发生顺序回退?}
-  F -- 否 --> G[暂时认为可原位保留]
-  F -- 是 --> H[说明存在乱序移动]
-  H --> I[计算 LIS]
-  I --> J[在 LIS 里的节点不移动]
-  I --> K[不在 LIS 里的节点移动]
-  I --> L[值为 0 的新位置挂载新节点]
+  A["scan old nodes one by one"] --> B{"find same key in new list"}
+  B -- no --> C["unmount old node"]
+  B -- yes --> D["reuse old node and patch"]
+  D --> E["record in newIndexToOldIndexMap"]
+  E --> F{"order fallback happened"}
+  F -- no --> G["keep as in-place candidate"]
+  F -- yes --> H["mark as reordered"]
+  H --> I["compute LIS"]
+  I --> J["nodes in LIS stay put"]
+  I --> K["nodes outside LIS move"]
+  I --> L["zero entries mount new nodes"]
 ```
 
 这里要特别注意：
@@ -644,16 +644,16 @@ A X C D
 
 ```mermaid
 flowchart LR
-  O1[旧位置0 A] --> P1[对位 patch]
-  N1[新位置0 A] --> P1
+  O1["old pos0 A"] --> P1["patch by index"]
+  N1["new pos0 A"] --> P1
 
-  O2[旧位置1 B] --> P2[对位 patch]
-  N2[新位置1 X] --> P2
+  O2["old pos1 B"] --> P2["patch by index"]
+  N2["new pos1 X"] --> P2
 
-  O3[旧位置2 C] --> P3[对位 patch]
-  N3[新位置2 C] --> P3
+  O3["old pos2 C"] --> P3["patch by index"]
+  N3["new pos2 C"] --> P3
 
-  N4[新位置3 D] --> M4[挂载]
+  N4["new pos3 D"] --> M4["mount"]
 ```
 
 这里要注意：
@@ -734,24 +734,24 @@ Vue 在处理同层数组 children 时，会先走几轮便宜路径。
 
 ```mermaid
 flowchart TD
-  A[patchKeyedChildren 开始] --> B[阶段1 从头同步<br/>i 向右推进]
-  B --> C{前缀是否连续同类型?}
-  C -- 是 --> B
-  C -- 否 --> D[阶段2 从尾同步<br/>e1 e2 向左收缩]
-  D --> E{后缀是否连续同类型?}
-  E -- 是 --> D
-  E -- 否 --> F{旧区间先耗尽? i > e1}
-  F -- 是 --> G[阶段3 批量挂载剩余新节点]
-  F -- 否 --> H{新区间先耗尽? i > e2}
-  H -- 是 --> I[阶段4 批量卸载剩余旧节点]
-  H -- 否 --> J[阶段5 处理中间未知区间]
-  J --> K[建立 key 到新索引映射]
-  K --> L[扫描旧节点: 复用 / 删除]
-  L --> M[生成 newIndexToOldIndexMap]
-  M --> N{是否发生乱序移动?}
-  N -- 否 --> O[只补挂载新增节点]
-  N -- 是 --> P[计算 LIS]
-  P --> Q[倒序执行 挂载或移动]
+  A["patchKeyedChildren start"] --> B["phase 1 sync from start"]
+  B --> C{"prefix keeps matching"}
+  C -- yes --> B
+  C -- no --> D["phase 2 sync from end"]
+  D --> E{"suffix keeps matching"}
+  E -- yes --> D
+  E -- no --> F{"old range exhausted first"}
+  F -- yes --> G["phase 3 mount remaining new nodes"]
+  F -- no --> H{"new range exhausted first"}
+  H -- yes --> I["phase 4 unmount remaining old nodes"]
+  H -- no --> J["phase 5 handle unknown middle range"]
+  J --> K["build key to new index map"]
+  K --> L["scan old nodes for reuse or delete"]
+  L --> M["build newIndexToOldIndexMap"]
+  M --> N{"reorder detected"}
+  N -- no --> O["only mount newly added nodes"]
+  N -- yes --> P["compute LIS"]
+  P --> Q["reverse pass for mount or move"]
 ```
 
 ---
@@ -933,37 +933,37 @@ B D A E
 ```mermaid
 flowchart LR
   subgraph Old["旧 children 区间 c1[s1...e1]"]
-    O1[旧节点 A]
-    O2[旧节点 B]
-    O3[旧节点 C]
-    O4[旧节点 D]
+    O1["old node A"]
+    O2["old node B"]
+    O3["old node C"]
+    O4["old node D"]
   end
 
   subgraph Map["匹配阶段"]
-    M1[keyToNewIndexMap<br/>key -> newIndex]
-    M2[newIndexToOldIndexMap<br/>newIndex -> oldIndex + 1]
+    M1["keyToNewIndexMap"]
+    M2["newIndexToOldIndexMap"]
   end
 
   subgraph New["新 children 区间 c2[s2...e2]"]
-    N1[新位置 B]
-    N2[新位置 D]
-    N3[新位置 A]
-    N4[新位置 E]
+    N1["new position B"]
+    N2["new position D"]
+    N3["new position A"]
+    N4["new position E"]
   end
 
-  O1 -->|找到新位置 2| M2
-  O2 -->|找到新位置 0| M2
-  O3 -->|未找到| X[卸载]
-  O4 -->|找到新位置 1| M2
+  O1 -->|new index 2| M2
+  O2 -->|new index 0| M2
+  O3 -->|not found| X["unmount"]
+  O4 -->|new index 1| M2
 
   M1 --> N1
   M1 --> N2
   M1 --> N3
   M1 --> N4
 
-  M2 --> Y[LIS 保留相对顺序稳定的节点]
-  Y --> Z[其余节点移动]
-  M2 --> W[值为 0 的新位置直接挂载]
+  M2 --> Y["LIS keeps stable relative order"]
+  Y --> Z["move remaining nodes"]
+  M2 --> W["zero entry means mount new node"]
 ```
 
 ---

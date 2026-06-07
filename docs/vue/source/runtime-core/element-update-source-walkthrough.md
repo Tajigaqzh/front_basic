@@ -74,11 +74,11 @@ if (n1 == null) {
 
 ```mermaid
 flowchart TD
-  A[processElement] --> B{元素类型是 svg / math?}
-  B --> C[修正 namespace]
-  C --> D{n1 是否为空?}
-  D -- 是 --> E[mountElement]
-  D -- 否 --> F[patchElement]
+  A["processElement"] --> B{"svg or math namespace"}
+  B --> C["normalize namespace"]
+  C --> D{"n1 is null"}
+  D -- yes --> E["mountElement"]
+  D -- no --> F["patchElement"]
 ```
 
 所以别把 `processElement()` 看得太重，它更像一个小调度器。
@@ -369,19 +369,19 @@ if ('value' in newProps) {
 
 ```mermaid
 flowchart TD
-  A[patchElement] --> B[复用旧 el]
-  B --> C[执行 beforeUpdate / 指令前置钩子]
-  C --> D[必要时清空旧 innerHTML / textContent]
-  D --> E{有 dynamicChildren?}
-  E -- 是 --> F[patchBlockChildren]
-  E -- 否 --> G{是否需要 full children diff?}
-  G -- 是 --> H[patchChildren]
-  G -- 否 --> I[跳过 children 全量 diff]
-  F --> J[按 patchFlag 更新 props 或文本]
+  A["patchElement"] --> B["reuse old el"]
+  B --> C["run beforeUpdate hooks"]
+  C --> D["clear old html or text when needed"]
+  D --> E{"has dynamicChildren"}
+  E -- yes --> F["patchBlockChildren"]
+  E -- no --> G{"need full children diff"}
+  G -- yes --> H["patchChildren"]
+  G -- no --> I["skip full children diff"]
+  F --> J["update props or text by patchFlag"]
   H --> J
   I --> J
-  J --> K[必要时 patchProps]
-  K --> L[调度 updated / 指令 updated]
+  J --> K["patchProps when needed"]
+  K --> L["queue updated hooks"]
 ```
 
 最终它干的事可以总结成：

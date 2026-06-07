@@ -69,19 +69,19 @@ const { patchFlag, shapeFlag } = n2
 
 ```mermaid
 flowchart TD
-  A[patchChildren] --> B{patchFlag > 0?}
-  B -- KEYED_FRAGMENT --> C[patchKeyedChildren]
-  B -- UNKEYED_FRAGMENT --> D[patchUnkeyedChildren]
-  B -- 否 --> E{新 children 是 text?}
-  E -- 是 --> F[走文本更新分支]
-  E -- 否 --> G{旧 children 是 array?}
-  G -- 是 且 新也是 array --> C
-  G -- 是 且 新不是 array --> H[卸载旧数组]
-  G -- 否 --> I{旧 children 是 text?}
-  I -- 是 --> J[先清空旧文本]
-  J --> K{新 children 是 array?}
-  K -- 是 --> L[挂载新数组]
-  K -- 否 --> M[结束]
+  A["patchChildren"] --> B{"patchFlag greater than zero"}
+  B -- keyed --> C["patchKeyedChildren"]
+  B -- unkeyed --> D["patchUnkeyedChildren"]
+  B -- no --> E{"new children are text"}
+  E -- yes --> F["update text branch"]
+  E -- no --> G{"old children are array"}
+  G -- yes and new is array --> C
+  G -- yes and new is not array --> H["unmount old array"]
+  G -- no --> I{"old children are text"}
+  I -- yes --> J["clear old text first"]
+  J --> K{"new children are array"}
+  K -- yes --> L["mount new array"]
+  K -- no --> M["finish"]
 ```
 
 这里最重要的不是记细节，而是记顺序：

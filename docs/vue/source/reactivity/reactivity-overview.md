@@ -25,37 +25,37 @@
 
 ```mermaid
 flowchart TD
-    reactive --> createReactiveObject
-    reactive --> baseHandlers
-    reactive --> collectionHandlers
+    A["reactive"] --> B["createReactiveObject"]
+    A --> C["baseHandlers"]
+    A --> D["collectionHandlers"]
 
-    ref --> RefImpl
-    shallowRef --> RefImpl
-    triggerRef --> Dep
+    E["ref"] --> F["RefImpl"]
+    G["shallowRef"] --> F
+    H["triggerRef"] --> I["Dep"]
 
-    computed --> ComputedRefImpl
-    ComputedRefImpl --> Dep
-    ComputedRefImpl --> refreshComputed
-    refreshComputed --> ReactiveEffect
+    J["computed"] --> K["ComputedRefImpl"]
+    K --> I
+    K --> L["refreshComputed"]
+    L --> M["ReactiveEffect"]
 
-    watch --> ReactiveEffect
-    watch --> traverse
-    watch --> onWatcherCleanup
+    N["watch"] --> M
+    N --> O["traverse"]
+    N --> P["onWatcherCleanup"]
 
-    effect --> ReactiveEffect
-    ReactiveEffect --> track
-    ReactiveEffect --> trigger
+    Q["effect"] --> M
+    M --> R["track"]
+    M --> S["trigger"]
 
-    baseHandlers --> track
-    baseHandlers --> trigger
-    collectionHandlers --> track
-    collectionHandlers --> trigger
-    RefImpl --> Dep
+    C --> R
+    C --> S
+    D --> R
+    D --> S
+    F --> I
 
-    track --> Dep
-    trigger --> Dep
-    Dep --> batch
-    effectScope --> ReactiveEffect
+    R --> I
+    S --> I
+    I --> T["batch"]
+    U["effectScope"] --> M
 ```
 
 ## 1. `reactive()` 这条线
@@ -75,14 +75,14 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[reactive(target)] --> B[createReactiveObject]
-    B --> C{目标类型}
-    C -- Object/Array --> D[baseHandlers]
-    C -- Map/Set/... --> E[collectionHandlers]
-    D --> F[new Proxy]
+    A["reactive target"] --> B["createReactiveObject"]
+    B --> C{"target type"}
+    C -- object or array --> D["baseHandlers"]
+    C -- map set and others --> E["collectionHandlers"]
+    D --> F["new Proxy"]
     E --> F
-    F --> G[读取时 track]
-    F --> H[写入时 trigger]
+    F --> G["track on read"]
+    F --> H["trigger on write"]
 ```
 
 关键点：
@@ -108,10 +108,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[ref(value)] --> B[createRef]
-    B --> C[new RefImpl]
-    C --> D[get value -> dep.track]
-    C --> E[set value -> dep.trigger]
+    A["ref value"] --> B["createRef"]
+    B --> C["new RefImpl"]
+    C --> D["track when reading value"]
+    C --> E["trigger when writing value"]
 ```
 
 关键点：
@@ -334,13 +334,13 @@ state.value = { count: 1 }
 
 ```mermaid
 flowchart TD
-    A[computed(getter)] --> B[ComputedRefImpl]
-    B --> C[读取 value]
-    C --> D[dep.track]
-    C --> E[refreshComputed]
-    E --> F{是否 dirty}
-    F -- 是 --> G[执行 getter]
-    F -- 否 --> H[复用缓存]
+    A["computed getter"] --> B["ComputedRefImpl"]
+    B --> C["read value"]
+    C --> D["dep.track"]
+    C --> E["refreshComputed"]
+    E --> F{"is dirty"}
+    F -- yes --> G["run getter"]
+    F -- no --> H["reuse cached value"]
 ```
 
 关键点：
@@ -369,13 +369,13 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[effect(fn)] --> B[new ReactiveEffect(fn)]
-    B --> C[run()]
-    C --> D[activeSub = 当前 effect]
-    D --> E[执行 fn]
-    E --> F[访问 reactive/ref/computed]
-    F --> G[track]
-    G --> H[Dep 记录当前 effect]
+    A["effect fn"] --> B["new ReactiveEffect"]
+    B --> C["run"]
+    C --> D["set activeSub to current effect"]
+    D --> E["execute fn"]
+    E --> F["read reactive ref or computed"]
+    F --> G["track"]
+    G --> H["Dep records current effect"]
 ```
 
 关键点：
@@ -402,14 +402,14 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[watch(source, cb)] --> B[把 source 归一化为 getter]
-    B --> C[new ReactiveEffect(getter)]
-    C --> D[首次 run]
-    D --> E[收集 source 依赖]
-    E --> F[source 变化]
-    F --> G[job()]
-    G --> H[比较新旧值]
-    H --> I[执行 cb]
+    A["watch source and callback"] --> B["normalize source into getter"]
+    B --> C["new ReactiveEffect getter"]
+    C --> D["first run"]
+    D --> E["collect source deps"]
+    E --> F["source changes"]
+    F --> G["run job"]
+    G --> H["compare new and old values"]
+    H --> I["execute callback"]
 ```
 
 关键点：
@@ -442,9 +442,9 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[target] --> B[key]
-    B --> C[Dep]
-    C --> D[Subscriber 列表]
+    A["target"] --> B["key"]
+    B --> C["Dep"]
+    C --> D["subscriber list"]
 ```
 
 ## 7. 这些 API 之间怎么相互依赖

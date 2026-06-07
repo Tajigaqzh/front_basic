@@ -81,13 +81,13 @@ const fragmentEndAnchor = (n2.anchor = n1 ? n1.anchor : hostCreateText(''))!
 
 ```mermaid
 flowchart TD
-  A[processFragment] --> B[准备 start / end 锚点]
-  B --> C[读取 patchFlag / dynamicChildren / slotScopeIds]
-  C --> D{首次挂载?}
-  D -- 是 --> E[插入锚点并 mountChildren]
-  D -- 否 --> F{是否命中稳定 fragment 快路径?}
-  F -- 是 --> G[patchBlockChildren]
-  F -- 否 --> H[patchChildren]
+  A["processFragment"] --> B["prepare start and end anchors"]
+  B --> C["read patchFlag dynamicChildren slotScopeIds"]
+  C --> D{"first mount"}
+  D -- yes --> E["insert anchors and mountChildren"]
+  D -- no --> F{"stable fragment fast path"}
+  F -- yes --> G["patchBlockChildren"]
+  F -- no --> H["patchChildren"]
 ```
 
 它的核心判断其实只有两层：

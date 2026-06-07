@@ -244,14 +244,14 @@ patchProps(...)
 
 ```mermaid
 flowchart TD
-  A[patchProps] --> B{oldProps 和 newProps 是同一引用?}
-  B -- 是 --> C[直接结束]
-  B -- 否 --> D[遍历 oldProps]
-  D --> E[新 props 不再存在的 key patch 成 null]
-  E --> F[遍历 newProps]
-  F --> G[跳过保留字段]
-  G --> H[变化的普通 key 执行 hostPatchProp]
-  H --> I[最后单独处理 value]
+  A["patchProps"] --> B{"same old and new props reference"}
+  B -- yes --> C["return directly"]
+  B -- no --> D["iterate oldProps"]
+  D --> E["patch removed keys to null"]
+  E --> F["iterate newProps"]
+  F --> G["skip reserved keys"]
+  G --> H["hostPatchProp for changed keys"]
+  H --> I["handle value at the end"]
 ```
 
 它其实非常朴素：

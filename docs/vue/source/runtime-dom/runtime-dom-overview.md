@@ -136,10 +136,10 @@ parent.insertBefore(...)
 ```mermaid
 flowchart TD
     A["createApp"] --> B["ensureRenderer"]
-    B --> C["createRenderer rendererOptions"]
-    C --> D["runtime-core patch"]
-    D --> E["nodeOps 创建或移动节点"]
-    D --> F["patchProp 分发属性更新"]
+    B --> C["createRenderer with rendererOptions"]
+    C --> D["runtime core patch"]
+    D --> E["nodeOps create move and remove nodes"]
+    D --> F["patchProp dispatches dom prop updates"]
 ```
 
 下面按前因后果拆开讲。

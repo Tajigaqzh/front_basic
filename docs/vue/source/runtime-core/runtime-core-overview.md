@@ -186,7 +186,7 @@ h('div', { id: 'a' }, 'hello')
 
 ```mermaid
 flowchart TD
-    A["createApp App"] --> B["createVNode rootComponent"]
+    A["createApp with App"] --> B["create root vnode"]
     B --> C["render"]
     C --> D["patch"]
     D --> E["processComponent"]
@@ -194,7 +194,7 @@ flowchart TD
     F --> G["setupComponent"]
     G --> H["setupRenderEffect"]
     H --> I["renderComponentRoot"]
-    I --> J["patch subTree"]
+    I --> J["patch subtree"]
 ```
 
 下面按“前因后果”讲。
@@ -346,12 +346,12 @@ Vue 会先把根组件包装成一个 VNode。
 
 ```mermaid
 flowchart TD
-    A["响应式数据变化"] --> B["组件 effect 被触发"]
+    A["reactive data changes"] --> B["component effect triggers"]
     B --> C["queueJob"]
     C --> D["flushJobs"]
-    D --> E["重新执行 render"]
-    E --> F["得到新的 subTree"]
-    F --> G["patch oldSubTree newSubTree"]
+    D --> E["rerun render"]
+    E --> F["get new subtree"]
+    F --> G["patch old subtree and new subtree"]
 ```
 
 这条链是理解 Vue 更新机制的核心。

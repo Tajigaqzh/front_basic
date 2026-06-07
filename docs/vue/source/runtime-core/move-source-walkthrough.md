@@ -243,14 +243,14 @@ moveType
 
 ```mermaid
 flowchart TD
-  A[move vnode] --> B{是组件吗?}
-  B -- 是 --> C[递归移动 component.subTree]
-  B -- 否 --> D{是特殊结构吗?}
-  D -- Suspense --> E[交给 Suspense 处理]
-  D -- Teleport --> F[交给 Teleport 处理]
-  D -- Fragment --> G[移动整段 fragment children]
-  D -- Static --> H[移动整段静态节点]
-  D -- 普通元素 --> I[hostInsert el 到 anchor 前]
+  A["move vnode"] --> B{"is component"}
+  B -- yes --> C["move component subtree recursively"]
+  B -- no --> D{"special structure"}
+  D -- Suspense --> E["delegate to Suspense"]
+  D -- Teleport --> F["delegate to Teleport"]
+  D -- Fragment --> G["move fragment children range"]
+  D -- Static --> H["move static node range"]
+  D -- element --> I["hostInsert before anchor"]
 ```
 
 最终它解决的问题其实很具体：

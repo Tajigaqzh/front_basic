@@ -8,12 +8,12 @@
 
 ```mermaid
 flowchart TD
-    A[queueJob] --> B[加入主队列]
-    B --> C[queueFlush]
-    C --> D[Promise 微任务]
-    D --> E[flushJobs]
-    E --> F[执行组件更新]
-    E --> G[执行 postFlush 回调]
+    A["queueJob"] --> B["push into main queue"]
+    B --> C["queueFlush"]
+    C --> D["schedule promise microtask"]
+    D --> E["flushJobs"]
+    E --> F["run component updates"]
+    E --> G["run postFlush callbacks"]
 ```
 
 ## 最重要的点

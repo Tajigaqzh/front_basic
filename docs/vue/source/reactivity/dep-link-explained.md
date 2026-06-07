@@ -21,11 +21,11 @@
 
 ```mermaid
 flowchart LR
-    A[ref.value / reactive[key] / computed.value] --> B[Dep]
-    B <--> C[Link]
-    C <--> D[Subscriber]
-    D --> E[ReactiveEffect]
-    D --> F[ComputedRefImpl]
+    A["reactive read point"] --> B["Dep"]
+    B <--> C["Link"]
+    C <--> D["Subscriber"]
+    D --> E["ReactiveEffect"]
+    D --> F["ComputedRefImpl"]
 ```
 
 这里每个角色的职责是：
@@ -183,27 +183,27 @@ LinkX <-> LinkA <-> LinkY
 
 ```mermaid
 flowchart TB
-    sub[Subscriber]
-    dep[Dep]
-    link[Link]
+    sub["Subscriber"]
+    dep["Dep"]
+    link["Link"]
 
-    sub -->|deps 链| link
-    dep -->|subs 链| link
-    link -->|sub| sub
-    link -->|dep| dep
+    sub -->|deps chain| link
+    dep -->|subs chain| link
+    link -->|sub ref| sub
+    link -->|dep ref| dep
 ```
 
 如果把双向链表的两条维度分开看：
 
 ```mermaid
 flowchart LR
-    sub[effect / computed]
-    l1[Link]
-    l2[Link]
-    l3[Link]
-    d1[Dep A]
-    d2[Dep B]
-    d3[Dep C]
+    sub["effect or computed"]
+    l1["Link"]
+    l2["Link"]
+    l3["Link"]
+    d1["Dep A"]
+    d2["Dep B"]
+    d3["Dep C"]
 
     sub --> l1 --> l2 --> l3
     l1 --> d1
@@ -219,13 +219,13 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    dep[Dep]
-    l1[Link]
-    l2[Link]
-    l3[Link]
-    s1[effect A]
-    s2[computed B]
-    s3[effect C]
+    dep["Dep"]
+    l1["Link"]
+    l2["Link"]
+    l3["Link"]
+    s1["effect A"]
+    s2["computed B"]
+    s3["effect C"]
 
     dep --> l1 --> l2 --> l3
     l1 --> s1
@@ -302,10 +302,10 @@ effect (ReactiveEffect)
 
 ```mermaid
 flowchart LR
-    ref[count: RefImpl]
-    dep[depCount: Dep]
-    link[Link1]
-    effect[ReactiveEffect]
+    ref["count RefImpl"]
+    dep["depCount Dep"]
+    link["Link1"]
+    effect["ReactiveEffect"]
 
     ref --> dep
     effect -->|deps| link
@@ -376,13 +376,13 @@ effect (ReactiveEffect)
 
 ```mermaid
 flowchart LR
-    a[a: RefImpl]
-    depA[a.dep]
-    l1[Link1]
-    b[b: ComputedRefImpl]
-    depB[b.dep]
-    l2[Link2]
-    e[effect]
+    a["a RefImpl"]
+    depA["a dep"]
+    l1["Link1"]
+    b["b ComputedRefImpl"]
+    depB["b dep"]
+    l2["Link2"]
+    e["effect"]
 
     a --> depA
     depA -->|subs| l1
@@ -434,17 +434,17 @@ this.dep.track()
 
 ```mermaid
 sequenceDiagram
-    participant S as activeSub(effect/computed)
-    participant R as ref.value / reactive[key]
-    participant D as Dep
-    participant L as Link
+    participant S as active subscriber
+    participant R as reactive read
+    participant D as dep
+    participant L as link
 
-    S->>R: 读取响应式值
-    R->>D: track()
-    D->>D: 读取当前 activeSub
-    D->>L: 创建或复用 Link(sub, dep)
-    D->>S: 把 Link 挂到 sub.deps
-    D->>D: 把 Link 挂到 dep.subs
+    S->>R: read reactive value
+    R->>D: call track
+    D->>D: inspect current active subscriber
+    D->>L: create or reuse link
+    D->>S: attach link to subscriber deps
+    D->>D: attach link to dep subs
 ```
 
 ### 场景二：读取 `computed.value`
@@ -489,16 +489,16 @@ this.dep.trigger()
 
 ```mermaid
 sequenceDiagram
-    participant W as 写入方
-    participant R as ref.value
-    participant D as Dep
-    participant S as subs 链上的订阅者
+    participant W as writer
+    participant R as ref value
+    participant D as dep
+    participant S as subscribers
 
-    W->>R: ref.value = newValue
-    R->>D: trigger()
-    D->>D: version++
-    D->>S: 遍历 dep.subs
-    S-->>D: notify()
+    W->>R: write new value
+    R->>D: call trigger
+    D->>D: bump version
+    D->>S: iterate dep subscribers
+    S-->>D: receive notification
 ```
 
 ### 如果订阅者是 computed
@@ -554,14 +554,14 @@ Vue 的做法不是“全部清空再重建”，而是：
 
 ```mermaid
 flowchart TD
-    A[effect/computed 重新执行前] --> B[把旧 links.version 设为 -1]
-    B --> C[执行期间重新访问到的依赖]
-    C --> D[把对应 link.version 恢复为 dep.version]
-    D --> E[执行结束后遍历 sub.deps]
-    E --> F{link.version 是否仍为 -1}
-    F -- 是 --> G[从 sub.deps 删除]
-    F -- 是 --> H[从 dep.subs 删除]
-    F -- 否 --> I[保留]
+    A["before rerun effect or computed"] --> B["set old link versions to minus one"]
+    B --> C["revisit deps during execution"]
+    C --> D["restore link version from dep version"]
+    D --> E["iterate sub.deps after execution"]
+    E --> F{"link version still minus one"}
+    F -- yes --> G["remove from sub.deps"]
+    F -- yes --> H["remove from dep.subs"]
+    F -- no --> I["keep link"]
 ```
 
 ## 10. 一句话总结整个原理
@@ -673,15 +673,15 @@ try {
 
 ```mermaid
 flowchart TD
-    A[ReactiveEffect.run / refreshComputed] --> B[保存上一个 activeSub]
-    B --> C[activeSub = 当前订阅者]
-    C --> D[shouldTrack = true]
-    D --> E[执行用户函数]
-    E --> F[期间发生响应式读取]
-    F --> G[dep.track() 读取 activeSub]
-    G --> H[把依赖记到当前订阅者]
-    H --> I[执行结束]
-    I --> J[恢复 activeSub 和 shouldTrack]
+    A["run effect or refresh computed"] --> B["save previous activeSub"]
+    B --> C["set activeSub to current subscriber"]
+    C --> D["set shouldTrack true"]
+    D --> E["execute user function"]
+    E --> F["reactive reads happen"]
+    F --> G["dep.track reads activeSub"]
+    G --> H["record dep on current subscriber"]
+    H --> I["execution ends"]
+    I --> J["restore activeSub and shouldTrack"]
 ```
 
 ### 最小执行流程
@@ -712,17 +712,17 @@ effect.run()
 
 ```mermaid
 sequenceDiagram
-    participant E as effect.run()
+    participant E as effect run
     participant G as activeSub
-    participant R as count.value
-    participant D as count.dep
+    participant R as count value
+    participant D as count dep
 
-    E->>G: activeSub = 当前 effect
-    E->>R: 执行副作用函数
-    R->>D: track()
-    D->>G: 读取当前 activeSub
-    D->>D: 建立依赖 Link
-    E->>G: 恢复上一个 activeSub
+    E->>G: set current active subscriber
+    E->>R: execute effect body
+    R->>D: call track
+    D->>G: read current active subscriber
+    D->>D: build dependency link
+    E->>G: restore previous active subscriber
 ```
 
 ### `computed` 也会成为 `activeSub`
@@ -829,12 +829,12 @@ if (!activeSub || !shouldTrack || activeSub === this.computed) {
 
 ```mermaid
 flowchart LR
-    read[一次响应式读取] --> judge{是否收集依赖}
-    active[activeSub\n记给谁]
-    flag[shouldTrack\n记不记]
+    read["reactive read"] --> judge{"collect dependency"}
+    active["activeSub target"]
+    flag["shouldTrack switch"]
     judge --> active
     judge --> flag
-    active --> result[建立 Link]
+    active --> result["create Link"]
     flag --> result
 ```
 
