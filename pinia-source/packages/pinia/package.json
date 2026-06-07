@@ -1,0 +1,24 @@
+{
+  "name": "pinia",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "A local Pinia source recreation workspace",
+  "sideEffects": false,
+  "types": "dist/pinia.d.ts",
+  "exports": {
+    ".": "./dist/pinia.mjs"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test:dts": "tsc -p ../../tsconfig.json --noEmit",
+    "test": "vitest run --root ../.. --config vitest.config.ts"
+  },
+  "devDependencies": {
+    "tsdown": "^0.20.1",
+    "vue": "^3.5.13"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  }
+}
