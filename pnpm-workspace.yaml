@@ -1,7 +1,11 @@
 packages:
-  - "backend"
-  - "frontend"
+  - "ai_flow_output/backend"
+  - "ai_flow_output/frontend"
   - "docs"
   - "promise"
   - "vue-source"
   - "vue-demo"
+  - "pinia-source"
+  - "vue-router-source"
+  - "vite-source"
+  - "vite-source/packages/*"
