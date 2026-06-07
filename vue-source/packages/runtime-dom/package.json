@@ -3,7 +3,29 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "./dist/runtime-dom.cjs",
+  "module": "./dist/runtime-dom.esm.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/runtime-dom.esm.js",
+      "require": {
+        "production": "./dist/runtime-dom.cjs.prod",
+        "default": "./dist/runtime-dom.cjs"
+      }
+    }
+  },
+  "dependencies": {
+    "@vue-source/reactivity": "workspace:*",
+    "@vue-source/runtime-core": "workspace:*",
+    "@vue-source/shared": "workspace:*",
+    "csstype": "^3.2.3"
+  },
   "scripts": {
-    "build": "echo \"@vue-source/runtime-dom has no build script yet.\""
+    "build": "node ../../scripts/build.js --pkg runtime-dom"
+  },
+  "buildOptions": {
+    "formats": ["esm", "cjs", "esm-prod", "cjs-prod"]
   }
 }

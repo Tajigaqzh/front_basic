@@ -3,7 +3,28 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "./dist/runtime-core.cjs",
+  "module": "./dist/runtime-core.esm.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/runtime-core.esm.js",
+      "require": {
+        "production": "./dist/runtime-core.cjs.prod",
+        "default": "./dist/runtime-core.cjs"
+      }
+    }
+  },
+  "dependencies": {
+    "@vue-source/compiler-core": "workspace:*",
+    "@vue-source/reactivity": "workspace:*",
+    "@vue-source/shared": "workspace:*"
+  },
   "scripts": {
-    "build": "echo \"@vue-source/runtime-core has no build script yet.\""
+    "build": "node ../../scripts/build.js --pkg runtime-core"
+  },
+  "buildOptions": {
+    "formats": ["esm", "cjs", "esm-prod", "cjs-prod"]
   }
 }
