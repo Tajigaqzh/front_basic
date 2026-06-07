@@ -22,10 +22,17 @@
 - [16_webRTC：WebRTC](./16_webRTC/index.md)
 - [17_js_canvas：Canvas](./17_js_canvas/index.md)
 - [18_3d：3D](./18_3d/index.md)
-- [19_js_mocroTask：MicroTask](./19_js_mocroTask/index.md)
+- [19_js_microTask：MicroTask](./19_js_microTask/index.md)
 - [20_js_worker：Worker](./20_js_worker/index.md)
 - [21_js_wasm：Wasm](./21_js_wasm/index.md)
 - [22_js_aiChat：AI Chat](./22_js_aiChat/index.md)
+- [23_js_prototype：Prototype / 原型链 / 继承机制](./23_js_prototype/index.md)
+- [24_js_scope_this_closure：this / 执行上下文 / 作用域链 / 闭包](./24_js_scope_this_closure/index.md)
+- [25_js_event：事件系统](./25_js_event/index.md)
+- [26_js_handwriting_ds：数据结构与常见手写](./26_js_handwriting_ds/index.md)
+- [27_js_memory_gc：内存管理 / 垃圾回收](./27_js_memory_gc/index.md)
+- [28_js_error_handling：错误处理](./28_js_error_handling/index.md)
+- [29_js_debugger：调试与 debugger](./29_js_debugger/index.md)
 
 ## 当前已有文档
 
