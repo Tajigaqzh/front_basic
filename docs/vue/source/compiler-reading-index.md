@@ -31,14 +31,16 @@
 4. [slot-outlet-and-slots-relation.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/slot-outlet-and-slots-relation.md)
 5. [vif-vfor-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/vif-vfor-ast-flow.md)
 6. [compiler-dom-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-on-top-of-compiler-core.md)
-7. [compiler-sfc-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/compiler-sfc-overview.md)
-8. [script-setup-macros-and-runtime.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/script-setup-macros-and-runtime.md)
-9. [binding-metadata-and-template-identifiers.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/binding-metadata-and-template-identifiers.md)
-10. [props-destructure-and-type-resolution.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/props-destructure-and-type-resolution.md)
-11. [top-level-await-and-css-vars.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/top-level-await-and-css-vars.md)
-12. [compiler-ssr-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
-13. [dom-vs-ssr-side-by-side.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/dom-vs-ssr-side-by-side.md)
-14. [component-slot-dom-vs-ssr.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/component-slot-dom-vs-ssr.md)
+7. [compiler-dom-source-walkthrough.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-source-walkthrough.md)
+8. [compiler-sfc-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/compiler-sfc-overview.md)
+9. [script-setup-macros-and-runtime.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/script-setup-macros-and-runtime.md)
+10. [binding-metadata-and-template-identifiers.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/binding-metadata-and-template-identifiers.md)
+11. [props-destructure-and-type-resolution.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/props-destructure-and-type-resolution.md)
+12. [top-level-await-and-css-vars.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/top-level-await-and-css-vars.md)
+13. [compiler-ssr-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
+14. [compiler-ssr-source-walkthrough.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-source-walkthrough.md)
+15. [dom-vs-ssr-side-by-side.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/dom-vs-ssr-side-by-side.md)
+16. [component-slot-dom-vs-ssr.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/component-slot-dom-vs-ssr.md)
 
 ---
 
@@ -128,6 +130,7 @@
 ### 3.1 DOM 平台扩展
 
 - [compiler-dom-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-on-top-of-compiler-core.md)
+- [compiler-dom-source-walkthrough.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-source-walkthrough.md)
 
 适合什么时候看：
 
@@ -141,9 +144,15 @@
 - runtime helpers
 - DOM 错误体系
 
+继续往下读建议：
+
+- 先顺着 `index.ts -> parserOptions.ts -> vModel.ts -> vOn.ts` 抓平台特化主线
+- 再读 `Transition.ts / validateHtmlNesting.ts / stringifyStatic.ts` 理解开发期约束与静态优化
+
 ### 3.2 SSR 平台扩展
 
 - [compiler-ssr-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
+- [compiler-ssr-source-walkthrough.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-source-walkthrough.md)
 
 适合什么时候看：
 
@@ -154,6 +163,11 @@
 - 第一轮 transform 如何复用 core/dom
 - 第二轮 `ssrCodegenTransform`
 - 为什么 SSR 最终不是 vnode 树，而是 `_push(...)`
+
+继续往下读建议：
+
+- 先抓 `index.ts -> ssrCodegenTransform.ts -> ssrTransformElement.ts` 这条 SSR 主链
+- 再读 component / slot / Teleport / Suspense / TransitionGroup 这些 SSR 特化分支
 
 ### 3.3 SFC 编排层
 
@@ -254,6 +268,9 @@
 6. [compiler-dom/src/transforms/vModel.ts](/Users/nwyzx/Desktop/project/source/front_basic/vue-source/packages/compiler-dom/src/transforms/vModel.ts)
 7. [compiler-dom/src/transforms/vOn.ts](/Users/nwyzx/Desktop/project/source/front_basic/vue-source/packages/compiler-dom/src/transforms/vOn.ts)
 8. [compiler-dom/src/transforms/vShow.ts](/Users/nwyzx/Desktop/project/source/front_basic/vue-source/packages/compiler-dom/src/transforms/vShow.ts)
+9. [compiler-dom/src/transforms/Transition.ts](/Users/nwyzx/Desktop/project/source/front_basic/vue-source/packages/compiler-dom/src/transforms/Transition.ts)
+10. [compiler-dom/src/transforms/validateHtmlNesting.ts](/Users/nwyzx/Desktop/project/source/front_basic/vue-source/packages/compiler-dom/src/transforms/validateHtmlNesting.ts)
+11. [compiler-dom/src/transforms/stringifyStatic.ts](/Users/nwyzx/Desktop/project/source/front_basic/vue-source/packages/compiler-dom/src/transforms/stringifyStatic.ts)
 
 再 SSR：
 
