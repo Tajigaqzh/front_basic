@@ -1,0 +1,19 @@
+{
+  "name": "vite",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "vite-source": "./dist/node/cli.js"
+  },
+  "exports": {
+    ".": "./dist/node/index.js",
+    "./client": "./dist/client/client.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "node ./dist/node/cli.js",
+    "dev:basic": "node ./dist/node/cli.js ../../playground/basic",
+    "build:basic": "node ./dist/node/cli.js build ../../playground/basic"
+  }
+}

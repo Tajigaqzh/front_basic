@@ -1,0 +1,25 @@
+{
+  "name": "@front/vite-source-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r --filter './packages/*' build",
+    "dev": "pnpm --filter vite dev",
+    "dev:basic": "pnpm --filter vite build && node packages/vite/dist/node/cli.js playground/basic",
+    "build:basic": "pnpm --filter vite build && node packages/vite/dist/node/cli.js build playground/basic",
+    "dev:vue": "pnpm --filter @vitejs/plugin-vue build && pnpm --filter vite build && node packages/vite/dist/node/cli.js playground/vue",
+    "build:vue": "pnpm --filter @vitejs/plugin-vue build && pnpm --filter vite build && node packages/vite/dist/node/cli.js build playground/vue"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "workspace:*",
+    "es-module-lexer": "^2.1.0",
+    "esbuild": "^0.28.0",
+    "less": "^4.6.4",
+    "postcss": "^8.5.15",
+    "rollup": "^4.61.1",
+    "sass": "^1.100.0",
+    "typescript": "^5.9.3",
+    "vite": "workspace:*",
+    "vue": "^3.5.35"
+  }
+}
