@@ -134,6 +134,7 @@ const normalizeSlot = (
 ): Slot => {
   if ((rawSlot as any)._n) {
     // already normalized - #5353
+    // 编译产物或上游运行时已经包过一次时，直接复用，避免重复嵌套上下文包装。
     return rawSlot as Slot
   }
   const normalized = withCtx((...args: any[]) => {
@@ -152,6 +153,7 @@ const normalizeSlot = (
     return normalizeSlotValue(rawSlot(...args))
   }, ctx) as Slot
   // NOT a compiled slot
+  // `_c = false` 表示它不是编译器生成的稳定插槽，后续某些优化分支不能假设它具备编译时语义。
   ;(normalized as ContextualRenderFn)._c = false
   return normalized
 }
@@ -173,6 +175,7 @@ const normalizeObjectSlots = (
   slots: InternalSlots,
   instance: ComponentInternalInstance,
 ) => {
+  // `ctx` 记录这份 slots 原本属于哪个父组件实例，插槽执行时要切回这个上下文。
   const ctx = rawSlots._ctx
   for (const key in rawSlots) {
     if (isInternalKey(key)) continue
@@ -192,7 +195,9 @@ const normalizeObjectSlots = (
             `Prefer function slots for better performance.`,
         )
       }
+      // 非函数插槽会被包装成“每次返回同一份 VNode 数组”的固定插槽函数。
       const normalized = normalizeSlotValue(value)
+      // 这里先把非函数值归一化一次并缓存起来，避免每次调用 slot 都重复 normalize。
       slots[key] = () => normalized
     }
   }
@@ -220,6 +225,7 @@ const normalizeVNodeSlots = (
     )
   }
   const normalized = normalizeSlotValue(children)
+  // 直接 children 最终一律收口到默认插槽，供子组件按 `slots.default()` 统一消费。
   instance.slots.default = () => normalized
 }
 
@@ -246,6 +252,7 @@ const assignSlots = (
     // do not copy the `slots._` compiler flag so that `renderSlot` creates
     // slot Fragment with BAIL patchFlag to force full updates
     if (optimized || !isInternalKey(key)) {
+      // 这里直接覆盖实例上的同名 slot，表示新一轮父组件渲染提供了最新插槽实现。
       slots[key] = children[key]
     }
   }
@@ -268,13 +275,28 @@ export const initSlots = (
   children: VNodeNormalizedChildren,
   optimized: boolean,
 ): void => {
+  /**
+   * 初始化组件实例上的 slots 容器。
+   *
+   * 主要功能：
+   * - 创建实例内部 `slots` 容器
+   * - 区分“对象插槽”和“普通 children”
+   * - 编译插槽场景下直接复用编译器已经整理好的结构
+   *
+   * 参数：
+   * - `instance`：当前组件实例
+   * - `children`：组件 vnode 上的 children
+   * - `optimized`：是否处于编译优化路径
+   */
   const slots = (instance.slots = createInternalObject())
   if (instance.vnode.shapeFlag & ShapeFlags.SLOTS_CHILDREN) {
+    // `type` 是编译器打在 slots 对象上的稳定性标记。
     const type = (children as RawSlots)._
     if (type) {
       assignSlots(slots, children as Slots, optimized)
       // make compiler marker non-enumerable
       if (optimized) {
+        // `_` 编译标记对运行时有用，但不应干扰普通枚举 slots key 的逻辑。
         def(slots, '_', type, true)
       }
     } else {
@@ -303,18 +325,31 @@ export const updateSlots = (
   children: VNodeNormalizedChildren,
   optimized: boolean,
 ): void => {
+  /**
+   * 更新组件实例上的 slots。
+   *
+   * 主要功能：
+   * - 根据新 children 重新同步插槽函数
+   * - 对稳定编译插槽跳过无意义更新
+   * - 清理新一轮更新里已经不存在的旧插槽名
+   *
+   * 所在链路：
+   * - `renderer.ts -> updateComponentPreRender -> updateSlots`
+   */
   const { vnode, slots } = instance
   // `needDeletionCheck` 控制本轮更新后是否还要扫一遍旧 slots 并删除失效项。
   let needDeletionCheck = true
   // `deletionComparisonTarget` 保存“哪些 slot 名在新输入里仍然存在”，供最后清理旧槽位时比对。
   let deletionComparisonTarget = EMPTY_OBJ
   if (vnode.shapeFlag & ShapeFlags.SLOTS_CHILDREN) {
+    // `type` 同样表示当前新传入 slots 是否来自编译器，以及稳定程度如何。
     const type = (children as RawSlots)._
     if (type) {
       // compiled slots.
       if (__DEV__ && isHmrUpdating) {
         // Parent was HMR updated so slot content may have changed.
         // force update slots and mark instance for hmr as well
+        // HMR 下哪怕编译器原本标成稳定插槽，也不能完全信任旧内容。
         assignSlots(slots, children as Slots, optimized)
         trigger(instance, TriggerOpTypes.SET, '$slots')
       } else if (optimized && type === SlotFlags.STABLE) {
@@ -330,6 +365,7 @@ export const updateSlots = (
       }
     } else {
       // 手写 slots 对象或运行时生成对象仍可能增删 slot 名，因此既要规范化也要后续删除检查。
+      // `$stable` 只是“结构稳定提示”，不是编译器 slots 标记，所以仍要先做运行时规范化。
       needDeletionCheck = !(children as RawSlots).$stable
       normalizeObjectSlots(children as RawSlots, slots, instance)
     }

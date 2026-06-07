@@ -105,6 +105,8 @@ export function onWatcherCleanup(
   failSilently = false,
   owner: ReactiveEffect | undefined = activeWatcher,
 ): void {
+  // watch / watchEffect 的 cleanup 不是和 dep 绑在一起，
+  // 而是单独挂在当前 watcher effect 上，在下次重跑前统一执行。
   if (owner) {
     let cleanups = cleanupMap.get(owner)
     if (!cleanups) cleanupMap.set(owner, (cleanups = []))
@@ -122,6 +124,11 @@ export function watch(
   cb?: WatchCallback | null,
   options: WatchOptions = EMPTY_OBJ,
 ): WatchHandle {
+  // watch 的整体流程可以分成四步：
+  // 1. 把不同形态的 source 统一规约成 getter
+  // 2. 用 ReactiveEffect 包起 getter，让它具备依赖收集能力
+  // 3. 变更后重新执行 getter，比较新旧值
+  // 4. 满足条件时调用用户回调，并处理 cleanup
   const { immediate, deep, once, scheduler, augmentJob, call } = options
 
   const warnInvalidSource = (s: unknown) => {
@@ -134,6 +141,8 @@ export function watch(
   }
 
   const reactiveGetter = (source: object) => {
+    // 对 reactive 对象做 deep watch 时，必须递归读取其内部属性；
+    // 否则 effect 只会订阅到“对象本身被访问”，而不是内部字段。
     // traverse will happen in wrapped getter below
     if (deep) return source
     // for `deep: false | 0` or shallow reactive, only traverse root-level properties
@@ -180,6 +189,8 @@ export function watch(
     } else {
       // no cb -> simple effect
       getter = () => {
+        // watchEffect 每次重跑前先执行上次注册的 cleanup，
+        // 并且在 cleanup 期间暂停依赖追踪，避免清理逻辑本身误收集依赖。
         if (cleanup) {
           pauseTracking()
           try {
@@ -231,6 +242,9 @@ export function watch(
     : INITIAL_WATCHER_VALUE
 
   const job = (immediateFirstRun?: boolean) => {
+    // job 是一次完整的 watcher 刷新。
+    // 对 watch(source, cb) 来说，它会先重新取值，再决定是否触发回调；
+    // 对 watchEffect 来说，则直接重新执行 effect。
     if (
       !(effect.flags & EffectFlags.ACTIVE) ||
       (!effect.dirty && !immediateFirstRun)
@@ -292,6 +306,7 @@ export function watch(
   boundCleanup = fn => onWatcherCleanup(fn, false, effect)
 
   cleanup = effect.onStop = () => {
+    // stop 或下次重跑前，统一冲刷这个 watcher 挂过的 cleanup 回调。
     const cleanups = cleanupMap.get(effect)
     if (cleanups) {
       if (call) {
@@ -333,6 +348,8 @@ export function traverse(
   depth: number = Infinity,
   seen?: Map<unknown, number>,
 ): unknown {
+  // traverse 的目的不是“复制对象”，而是“递归读取所有可达属性”，
+  // 从而强制触发 get/iterate，建立 deep watch 所需的依赖。
   if (depth <= 0 || !isObject(value) || (value as any)[ReactiveFlags.SKIP]) {
     return value
   }

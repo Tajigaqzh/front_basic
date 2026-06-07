@@ -218,6 +218,20 @@ export function initProps(
   isStateful: number, // result of bitwise flag comparison
   isSSR = false,
 ): void {
+  /**
+   * 初始化组件实例上的 `props` 和 `attrs`。
+   *
+   * 主要功能：
+   * - 把父组件传入的原始 props 拆成“声明过的 props”和“未声明的 attrs”
+   * - 给所有声明过的 props 补齐键位，保证后续访问稳定
+   * - 有状态组件上把 props 包成浅响应式对象
+   *
+   * 参数：
+   * - `instance`：当前组件实例
+   * - `rawProps`：父组件传入的原始 vnode props
+   * - `isStateful`：是否为有状态组件
+   * - `isSSR`：是否处于 SSR 初始化阶段
+   */
   const props: Data = {}
   const attrs: Data = createInternalObject()
 
@@ -253,6 +267,12 @@ export function initProps(
 }
 
 function isInHmrContext(instance: ComponentInternalInstance | null) {
+  /**
+   * 判断当前组件是否处在 HMR 影响链路里。
+   *
+   * 只要父链上任意组件带有 `__hmrId`，
+   * 这次 props 更新就应走更保守的完整对比路径。
+   */
   // 只要父链上任意组件处于 HMR 体系里，这次 props 更新就应走更保守的完整对比路径。
   while (instance) {
     if (instance.type.__hmrId) return true
@@ -274,11 +294,23 @@ export function updateProps(
   rawPrevProps: Data | null,
   optimized: boolean,
 ): void {
+  /**
+   * 在组件更新阶段同步最新的 props / attrs。
+   *
+   * 主要功能：
+   * - 编译优化场景下优先利用 patchFlag 只更新动态 props
+   * - 必要时退回完整 props diff
+   * - attrs 变化时触发依赖 `$attrs` 的渲染分支重新执行
+   *
+   * 所在链路：
+   * - `renderer.ts -> updateComponentPreRender -> updateProps`
+   */
   const {
     props,
     attrs,
     vnode: { patchFlag },
   } = instance
+  // `rawCurrentProps` 表示当前实例上已有的 props 原始对象，用来做更新阶段对比和删除检测。
   const rawCurrentProps = toRaw(props)
   const [options] = instance.propsOptions
   let hasAttrsChanged = false
@@ -294,6 +326,7 @@ export function updateProps(
     if (patchFlag & PatchFlags.PROPS) {
       // Compiler-generated props & no keys change, just set the updated
       // the props.
+      // `dynamicProps` 是编译阶段提取出来的“这次可能变化的 props 列表”。
       const propsToUpdate = instance.vnode.dynamicProps!
       for (let i = 0; i < propsToUpdate.length; i++) {
         let key = propsToUpdate[i]
@@ -420,6 +453,7 @@ function setFullProps(
   attrs: Data,
 ) {
   // `hasAttrsChanged` 用来通知上层：这一轮完整归一化是否改动了 attrs。
+  // `options` 是归一化后的 props 声明，`needCastKeys` 记录需要延后做默认值/Boolean 处理的 key。
   const [options, needCastKeys] = instance.propsOptions
   let hasAttrsChanged = false
   // `rawCastValues` 暂存那些需要稍后再做 Boolean / default 解析的原始值。
@@ -444,9 +478,11 @@ function setFullProps(
         }
       }
 
+      // `value` 是父组件本次直接传进来的原始值，尚未经过任何运行时修正。
       const value = rawProps[key]
       // prop option names are camelized during normalization, so to support
       // kebab -> camel conversion here we need to camelize the key.
+      // `camelKey` 负责把模板里的 kebab-case 输入折叠成运行时统一使用的 camelCase。
       let camelKey
       if (options && hasOwn(options, (camelKey = camelize(key)))) {
         if (!needCastKeys || !needCastKeys.includes(camelKey)) {
@@ -474,6 +510,8 @@ function setFullProps(
   }
 
   if (needCastKeys) {
+    // 这批 key 需要基于“当前整组 props 状态”再做一次收口，
+    // 因为默认值工厂和 Boolean casting 都不适合在第一次遍历时直接拍板。
     const rawCurrentProps = toRaw(props)
     const castValues = rawCastValues || EMPTY_OBJ
     for (let i = 0; i < needCastKeys.length; i++) {
@@ -510,17 +548,20 @@ function resolvePropValue(
 ) {
   // 这个函数负责把某个 prop 从“原始传入值”收敛成“实例最终可读值”。
   // 主要处理三件事：默认值、默认值工厂缓存、Boolean 强制转换。
+  // `opt` 是当前 prop 对应的归一化配置。
   const opt = options[key]
   if (opt != null) {
     const hasDefault = hasOwn(opt, 'default')
     // default values
     if (hasDefault && value === undefined) {
+      // `defaultValue` 既可能是普通字面量，也可能是依赖 props 的工厂函数。
       const defaultValue = opt.default
       if (
         opt.type !== Function &&
         !opt.skipFactory &&
         isFunction(defaultValue)
       ) {
+        // `propsDefaults` 用来缓存默认值工厂结果，避免同一实例重复求值。
         const { propsDefaults } = instance
         if (key in propsDefaults) {
           value = propsDefaults[key]
@@ -678,6 +719,13 @@ export function normalizePropsOptions(
 }
 
 function validatePropName(key: string) {
+  /**
+   * 校验 props 名是否合法。
+   *
+   * 规则：
+   * - 不能以 `$` 开头
+   * - 不能命中运行时保留字段
+   */
   // 以 `$` 开头或命中保留字段的名字不能作为用户 props 名。
   if (key[0] !== '$' && !isReservedProp(key)) {
     return true
@@ -724,8 +772,10 @@ function validateProps(
 ) {
   // 校验时既要看原始传入值，也要看归一化后的 props，
   // 因为 default / Boolean casting 都可能改变最终值。
+  // `resolvedValues` 是最终已经过默认值 / Boolean casting 的 props 结果。
   const resolvedValues = toRaw(props)
   const options = instance.propsOptions[0]
+  // `camelizePropsKey` 用来判断某个声明 prop 这次是否根本没有被传入。
   const camelizePropsKey = Object.keys(rawProps).map(key => camelize(key))
   for (const key in options) {
     let opt = options[key]
@@ -851,6 +901,7 @@ function getInvalidTypeMessage(
   let message =
     `Invalid prop: type check failed for prop "${name}".` +
     ` Expected ${expectedTypes.map(capitalize).join(' | ')}`
+  // 这里默认用第一个期望类型作为主展示类型，便于拼接更自然的报错文案。
   const expectedType = expectedTypes[0]
   const receivedType = toRawType(value)
   const expectedValue = styleValue(value, expectedType)

@@ -102,6 +102,7 @@ export function shallowRef(value?: unknown) {
 }
 
 function createRef(rawValue: unknown, shallow: boolean) {
+  // 已经是 ref 就直接复用，避免 ref(ref(x)) 产生多层壳。
   if (isRef(rawValue)) {
     return rawValue
   }
@@ -121,12 +122,15 @@ class RefImpl<T = any> {
   public readonly [ReactiveFlags.IS_SHALLOW]: boolean = false
 
   constructor(value: T, isShallow: boolean) {
+    // ref 的本质是把“单个值”包装成一个带 getter/setter 的对象，
+    // 然后在 `.value` 这一处固定入口上接入 dep。
     this._rawValue = isShallow ? value : toRaw(value)
     this._value = isShallow ? value : toReactive(value)
     this[ReactiveFlags.IS_SHALLOW] = isShallow
   }
 
   get value() {
+    // 读取 ref.value 时，不走 Proxy，而是直接通过访问器属性收集依赖。
     if (__DEV__) {
       this.dep.track({
         target: this,
@@ -140,6 +144,8 @@ class RefImpl<T = any> {
   }
 
   set value(newValue) {
+    // 写入 ref.value 时先比较原始值，再决定是否触发。
+    // 非 shallow ref 会把对象值转成 reactive，保证和 reactive() 的深层行为一致。
     const oldValue = this._rawValue
     const useDirectValue =
       this[ReactiveFlags.IS_SHALLOW] ||
@@ -280,6 +286,8 @@ const shallowUnwrapHandlers: ProxyHandler<any> = {
 export function proxyRefs<T extends object>(
   objectWithRefs: T,
 ): ShallowUnwrapRef<T> {
+  // proxyRefs 用一层轻量 Proxy，把对象属性里的 ref 自动解包成 value。
+  // 常见于 setup 返回值，模板/外层使用时不必手写 `.value`。
   return isReactive(objectWithRefs)
     ? (objectWithRefs as ShallowUnwrapRef<T>)
     : new Proxy(objectWithRefs, shallowUnwrapHandlers)
@@ -304,6 +312,8 @@ class CustomRefImpl<T, S = T> {
   public _value: T = undefined!
 
   constructor(factory: CustomRefFactory<T, S>) {
+    // customRef 把底层 track/trigger 主动权交给用户。
+    // 外部 factory 只要在合适时机调用这两个函数，就能接入同一套依赖系统。
     const dep = (this.dep = new Dep())
     const { get, set } = factory(dep.track.bind(dep), dep.trigger.bind(dep))
     this._get = get
@@ -385,6 +395,8 @@ class ObjectRefImpl<T extends object, K extends keyof T> {
     key: K,
     private readonly _defaultValue?: T[K],
   ) {
+    // toRef(obj, key) 创建的不是独立存储，而是一个“属性映射 ref”：
+    // 读写最终都会落回原对象的那个 key。
     this._key = (isSymbol(key) ? key : String(key)) as K
     this._raw = toRaw(_object)
 
@@ -423,6 +435,8 @@ class ObjectRefImpl<T extends object, K extends keyof T> {
   }
 
   get dep(): Dep | undefined {
+    // 这里直接复用源 reactive 对象在该 key 上已有的 dep，
+    // 所以属性 ref 和原对象字段本质上订阅的是同一条依赖。
     return getDepFromReactive(this._raw, this._key)
   }
 }
@@ -505,6 +519,7 @@ export function toRef(
   key?: string | number | symbol,
   defaultValue?: unknown,
 ): Ref {
+  // toRef 统一把“值 / ref / getter / 对象属性”规范化成 ref 形态。
   if (isRef(source)) {
     return source
   } else if (isFunction(source)) {

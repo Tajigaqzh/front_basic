@@ -16,6 +16,17 @@ import { EMPTY_OBJ } from '@vue-source/shared'
  * - `name`：CSS Module 名称，默认读取最常见的 `$style`。
  */
 export function useCssModule(name = '$style'): Record<string, string> {
+  /**
+   * 读取当前组件注入的 CSS Modules 映射表。
+   *
+   * 主要功能：
+   * - 从当前组件定义的 `__cssModules` 中取出指定模块
+   * - 默认返回最常见的 `$style`
+   * - 找不到当前实例、模块容器或具体模块名时在开发环境给出提示
+   *
+   * 参数：
+   * - `name`：要读取的 CSS Module 名称
+   */
   if (!__GLOBAL__) {
     const instance = getCurrentInstance()!
     if (!instance) {

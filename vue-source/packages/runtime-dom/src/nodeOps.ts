@@ -36,6 +36,7 @@ if (tt) {
       createHTML: val => val,
     })
   } catch (e: unknown) {
+    // 同名策略在某些 CSP 配置下不允许重复创建，这里只能降级继续运行。
     // `createPolicy` throws a TypeError if the name is a duplicate
     // and the CSP trusted-types directive is not using `allow-duplicates`.
     // So we have to catch that error.
@@ -51,6 +52,7 @@ if (tt) {
 export const unsafeToTrustedHTML: (value: string) => TrustedHTML | string =
   policy ? val => policy.createHTML(val) : val => val
 
+// SVG / MathML 需要走 namespace API 创建元素，否则浏览器会按普通 HTML 元素处理。
 export const svgNS = 'http://www.w3.org/2000/svg'
 export const mathmlNS = 'http://www.w3.org/1998/Math/MathML'
 
@@ -72,17 +74,21 @@ const templateContainer = doc && /*@__PURE__*/ doc.createElement('template')
  */
 export const nodeOps: Omit<RendererOptions<Node, Element>, 'patchProp'> = {
   insert: (child, parent, anchor) => {
+    // 所有元素/文本/注释/片段最终都会落到这一个“插入宿主节点”原语上。
+    // `anchor` 为空时等价于 appendChild；有值时表示插到指定锚点前。
     parent.insertBefore(child, anchor || null)
   },
 
   remove: child => {
     const parent = child.parentNode
     if (parent) {
+      // 删除前先判 parent，兼容“节点已被别处移走”的场景。
       parent.removeChild(child)
     }
   },
 
   createElement: (tag, namespace, is, props): Element => {
+    // 不同命名空间要走不同创建 API；`is` 仅用于原生 customized built-in element。
     const el =
       namespace === 'svg'
         ? doc.createElementNS(svgNS, tag)
@@ -93,6 +99,7 @@ export const nodeOps: Omit<RendererOptions<Node, Element>, 'patchProp'> = {
             : doc.createElement(tag)
 
     if (tag === 'select' && props && props.multiple != null) {
+      // `multiple` 在某些浏览器里需要作为 attribute 明确存在，不能只依赖 props。
       ;(el as HTMLSelectElement).setAttribute('multiple', props.multiple)
     }
 
@@ -104,10 +111,12 @@ export const nodeOps: Omit<RendererOptions<Node, Element>, 'patchProp'> = {
   createComment: text => doc.createComment(text),
 
   setText: (node, text) => {
+    // 文本 vnode 更新最终会落到这里。
     node.nodeValue = text
   },
 
   setElementText: (el, text) => {
+    // 元素直接设置纯文本 children 时，走 `textContent` 比逐子节点 patch 更直接。
     el.textContent = text
   },
 
@@ -118,6 +127,7 @@ export const nodeOps: Omit<RendererOptions<Node, Element>, 'patchProp'> = {
   querySelector: selector => doc.querySelector(selector),
 
   setScopeId(el, id) {
+    // scoped CSS 本质上就是给元素补一个形如 `data-v-xxx` 的属性。
     el.setAttribute(id, '')
   },
 
@@ -142,6 +152,7 @@ export const nodeOps: Omit<RendererOptions<Node, Element>, 'patchProp'> = {
     if (start && (start === end || start.nextSibling)) {
       // cached
       while (true) {
+        // 命中缓存边界时直接 clone 现成节点，避免再次解析 HTML 字符串。
         parent.insertBefore(start!.cloneNode(true), anchor)
         if (start === end || !(start = start!.nextSibling)) break
       }
@@ -157,6 +168,7 @@ export const nodeOps: Omit<RendererOptions<Node, Element>, 'patchProp'> = {
 
       const template = templateContainer.content
       if (namespace === 'svg' || namespace === 'mathml') {
+        // 外层包装标签只用于借浏览器正确解析命名空间，落真实节点时要去掉。
         // remove outer svg/math wrapper
         const wrapper = template.firstChild!
         while (wrapper.firstChild) {
@@ -167,9 +179,9 @@ export const nodeOps: Omit<RendererOptions<Node, Element>, 'patchProp'> = {
       parent.insertBefore(template, anchor)
     }
     return [
-      // first
+      // first：静态片段插入后的起始节点，供后续 block/fragment 复用缓存边界。
       before ? before.nextSibling! : parent.firstChild!,
-      // last
+      // last：静态片段插入后的结束节点。
       anchor ? anchor.previousSibling! : parent.lastChild!,
     ]
   },

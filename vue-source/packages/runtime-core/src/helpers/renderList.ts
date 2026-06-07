@@ -85,17 +85,28 @@ export function renderList(
   cache?: any[],
   index?: number,
 ): VNodeChild[] {
+  /**
+   * 运行时展开 `v-for` 数据源。
+   *
+   * 主要功能：
+   * - 统一处理数组、字符串、数字区间、可迭代对象、普通对象
+   * - 在编译优化场景下把旧结果按位置传给 `renderItem`
+   * - 最终返回一组可直接参与 patch 的子节点结果
+   */
   let ret: VNodeChild[]
   // `cached` 保存上一次同一位置生成的 vnode 列表，给编译优化路径做对位复用。
   const cached = (cache && cache[index!]) as VNode[] | undefined
   const sourceIsArray = isArray(source)
+  // `cache/index` 主要服务于编译优化路径，让同一位置的旧 vnode 能传进 `renderItem` 做对位复用。
 
   if (sourceIsArray || isString(source)) {
+    // 数组和字符串都可以直接按 length 顺序遍历。
     const sourceIsReactiveArray = sourceIsArray && isReactive(source)
     let needsWrap = false
     let isReadonlySource = false
     if (sourceIsReactiveArray) {
       // 响应式数组遍历时先转成浅只读快照，避免遍历过程中意外触发深层代理开销。
+      // 这样既能保留依赖追踪，又避免 render 阶段为了每一项都做不必要的深层代理包装。
       needsWrap = !isShallow(source)
       isReadonlySource = isReadonly(source)
       source = shallowReadArray(source)
@@ -114,6 +125,7 @@ export function renderList(
       )
     }
   } else if (typeof source === 'number') {
+    // number 场景对应模板里的 `n in 10` 这种范围遍历，运行时生成 1..n。
     if (__DEV__ && (!Number.isInteger(source) || source < 0)) {
       warn(
         `The v-for range expects a positive integer value but got ${source}.`,
@@ -128,10 +140,12 @@ export function renderList(
   } else if (isObject(source)) {
     if (source[Symbol.iterator as any]) {
       // Set/Map 等 iterable 统一走 `Array.from` 收口。
+      // 这样下面的渲染路径仍然可以维持“有序下标 + cached[i] 对位”的统一处理方式。
       ret = Array.from(source as Iterable<any>, (item, i) =>
         renderItem(item, i, undefined, cached && cached[i]),
       )
     } else {
+      // 普通对象遍历时，第二个参数传 key，第三个参数传顺序下标。
       const keys = Object.keys(source)
       ret = new Array(keys.length)
       for (let i = 0, l = keys.length; i < l; i++) {

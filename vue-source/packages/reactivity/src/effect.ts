@@ -40,7 +40,9 @@ export let activeSub: Subscriber | undefined
 
 export enum EffectFlags {
   /**
-   * ReactiveEffect only
+   * 响应式订阅者的运行状态位。
+   * 这里的标记会同时服务于普通 effect 和 computed，
+   * 整个调度流程基本都靠这些位来避免重复入队、递归触发和无效重算。
    */
   ACTIVE = 1 << 0,
   RUNNING = 1 << 1,
@@ -53,7 +55,15 @@ export enum EffectFlags {
 }
 
 /**
- * Subscriber is a type that tracks (or subscribes to) a list of deps.
+ * Subscriber 表示“可以订阅依赖”的实体。
+ *
+ * 在 reactivity 里，普通 `effect` 和 `computed` 都是订阅者：
+ * - 它们运行时会读取响应式数据，从而挂到若干 dep 上
+ * - 数据变化时，dep 又会反向通知这些订阅者重新求值或重新调度
+ *
+ * 这也是整套系统最核心的数据流：
+ * `响应式读 -> track -> dep 记录 sub`
+ * `响应式写 -> trigger -> dep 通知 sub`
  */
 export interface Subscriber extends DebuggerOptions {
   /**
@@ -88,6 +98,10 @@ export class ReactiveEffect<T = any>
   implements Subscriber, ReactiveEffectOptions
 {
   /**
+   * 当前 effect 依赖的 dep 链表头。
+   * effect 每次运行前后都会复用和清理这条链，用来完成“依赖重收集”。
+   */
+  /**
    * @internal
    */
   deps?: Link = undefined
@@ -114,6 +128,8 @@ export class ReactiveEffect<T = any>
   onTrigger?: (event: DebuggerEvent) => void
 
   constructor(public fn: () => T) {
+    // effect 在创建时会尝试挂到当前 effect scope。
+    // 这样组件或作用域销毁时，可以沿着 scope 统一 stop 掉所有 effect。
     if (activeEffectScope) {
       if (activeEffectScope.active) {
         activeEffectScope.effects.push(this)
@@ -135,6 +151,8 @@ export class ReactiveEffect<T = any>
   }
 
   resume(): void {
+    // pause 期间如果有触发，不会立刻执行，而是先记到 pausedQueueEffects。
+    // resume 时再补跑一次，避免错过暂停期间发生的变更。
     if (this.flags & EffectFlags.PAUSED) {
       this.flags &= ~EffectFlags.PAUSED
       if (pausedQueueEffects.has(this)) {
@@ -160,7 +178,12 @@ export class ReactiveEffect<T = any>
   }
 
   run(): T {
-    // TODO cleanupEffect
+    // run 是 effect 的执行入口，也是依赖收集真正发生的地方。
+    // 主流程：
+    // 1. 清理上一次运行残留的依赖状态
+    // 2. 把当前 effect 挂到 activeSub，全局声明“现在轮到我收集依赖”
+    // 3. 执行用户函数，期间所有响应式读取都会 track 到当前 effect
+    // 4. 结束后清理未再次访问的旧依赖，并恢复上一个 activeSub
 
     if (!(this.flags & EffectFlags.ACTIVE)) {
       // stopped during cleanup
@@ -192,6 +215,8 @@ export class ReactiveEffect<T = any>
   }
 
   stop(): void {
+    // stop 会把当前 effect 从所有 dep 的订阅链里彻底摘掉。
+    // 之后这个 effect 仍然可以被手动 run，但不会再自动响应数据变化。
     if (this.flags & EffectFlags.ACTIVE) {
       for (let link = this.deps; link; link = link.nextDep) {
         removeSub(link)
@@ -204,6 +229,10 @@ export class ReactiveEffect<T = any>
   }
 
   trigger(): void {
+    // trigger 不直接等价于 run：
+    // - paused 时先缓存
+    // - 有 scheduler 时交给外部调度
+    // - 否则只在 dirty 时同步执行
     if (this.flags & EffectFlags.PAUSED) {
       pausedQueueEffects.add(this)
     } else if (this.scheduler) {
@@ -249,6 +278,8 @@ let batchedSub: Subscriber | undefined
 let batchedComputed: Subscriber | undefined
 
 export function batch(sub: Subscriber, isComputed = false): void {
+  // 所有被通知的订阅者先统一入批处理队列。
+  // 这样同一轮同步修改里，多次 trigger 最终只会安排一次真正执行。
   sub.flags |= EffectFlags.NOTIFIED
   if (isComputed) {
     sub.next = batchedComputed
@@ -271,6 +302,8 @@ export function startBatch(): void {
  * @internal
  */
 export function endBatch(): void {
+  // 只有最外层 batch 结束时才真正冲刷队列。
+  // computed 先清 NOTIFIED，不立刻求值；普通 effect 再按队列统一触发。
   if (--batchDepth > 0) {
     return
   }
@@ -310,6 +343,8 @@ export function endBatch(): void {
 }
 
 function prepareDeps(sub: Subscriber) {
+  // 运行前先把旧依赖全部标成“待确认未使用”。
+  // 后续如果本轮再次访问该 dep，会把 version 同步回来；否则在 cleanup 阶段移除。
   // Prepare deps for tracking, starting from the head
   for (let link = sub.deps; link; link = link.nextDep) {
     // set all previous deps' (if any) version to -1 so that we can track
@@ -322,6 +357,8 @@ function prepareDeps(sub: Subscriber) {
 }
 
 function cleanupDeps(sub: Subscriber) {
+  // 运行结束后倒序清理没被重新访问到的 dep。
+  // 这一步保证 effect 的依赖集合始终和“本轮真实读取过的数据”一致。
   // Cleanup unused deps
   let head
   let tail = sub.depsTail
@@ -351,6 +388,8 @@ function cleanupDeps(sub: Subscriber) {
 }
 
 function isDirty(sub: Subscriber): boolean {
+  // dirty 判断的本质是比较“effect 记住的 dep version”
+  // 和“dep 当前 version”是否一致；computed 还会递归刷新其上游 computed。
   for (let link = sub.deps; link; link = link.nextDep) {
     if (
       link.dep.version !== link.version ||
@@ -374,6 +413,10 @@ function isDirty(sub: Subscriber): boolean {
  * @internal
  */
 export function refreshComputed(computed: ComputedRefImpl): undefined {
+  // computed 是“带缓存的订阅者”：
+  // - 外部读取 computed.value 时才尝试刷新
+  // - 如果上游没有变化，直接复用缓存
+  // - 如果脏了，就像一个特殊 effect 那样重新执行 getter
   if (
     computed.flags & EffectFlags.TRACKING &&
     !(computed.flags & EffectFlags.DIRTY)
@@ -430,6 +473,8 @@ export function refreshComputed(computed: ComputedRefImpl): undefined {
 }
 
 function removeSub(link: Link, soft = false) {
+  // 把订阅者从 dep 的双向链表摘掉。
+  // computed 在没有任何下游订阅者后，会级联软退订自己的上游依赖，避免长期悬挂。
   const { dep, prevSub, nextSub } = link
   if (prevSub) {
     prevSub.nextSub = nextSub
@@ -470,6 +515,7 @@ function removeSub(link: Link, soft = false) {
 }
 
 function removeDep(link: Link) {
+  // 把 dep 从 sub 的依赖链摘掉，和 removeSub 分别维护双向关系的两侧。
   const { prevDep, nextDep } = link
   if (prevDep) {
     prevDep.nextDep = nextDep
@@ -485,6 +531,8 @@ export function effect<T = any>(
   fn: () => T,
   options?: ReactiveEffectOptions,
 ): ReactiveEffectRunner<T> {
+  // 用户态 `effect(fn)` 的入口：
+  // 这里会立刻执行一次，首轮运行的目的就是建立初始依赖图。
   if ((fn as ReactiveEffectRunner).effect instanceof ReactiveEffect) {
     fn = (fn as ReactiveEffectRunner).effect.fn
   }

@@ -5,6 +5,11 @@ export let activeEffectScope: EffectScope | undefined
 
 export class EffectScope {
   /**
+   * EffectScope 是一层 effect 生命周期容器。
+   * 在这个作用域里创建的 effect/computed/watch 都会被收集起来，
+   * 之后可以通过一次 stop 统一释放。
+   */
+  /**
    * @internal
    */
   private _active = true
@@ -45,6 +50,8 @@ export class EffectScope {
   // TODO isolatedDeclarations ReactiveFlags.SKIP
 
   constructor(public detached = false) {
+    // 非 detached scope 会自动挂到当前激活的父 scope 上，
+    // 形成一棵作用域树，便于组件/逻辑块整体销毁。
     if (!detached && activeEffectScope) {
       if (activeEffectScope.active) {
         this.parent = activeEffectScope
@@ -66,6 +73,8 @@ export class EffectScope {
   }
 
   pause(): void {
+    // pause / resume 会级联影响子 scope 和内部所有 effect，
+    // 适合临时冻结一整片响应式逻辑。
     if (this._active) {
       this._isPaused = true
       let i, l
@@ -101,6 +110,8 @@ export class EffectScope {
   }
 
   run<T>(fn: () => T): T | undefined {
+    // run 的本质是把当前 scope 暂时设为 activeEffectScope，
+    // 让内部新创建的 effect 自动归属到这个 scope。
     if (this._active) {
       const currentEffectScope = activeEffectScope
       try {
@@ -157,6 +168,10 @@ export class EffectScope {
   }
 
   stop(fromParent?: boolean): void {
+    // stop 会递归停止：
+    // - 当前 scope 的所有 effect
+    // - 当前 scope 注册的 cleanups
+    // - 所有子 scope
     if (this._active) {
       this._active = false
       let i, l

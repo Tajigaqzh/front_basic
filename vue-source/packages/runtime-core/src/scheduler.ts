@@ -237,6 +237,8 @@ export function queueJob(job: SchedulerJob): void {
  * - 通过微任务把同步阶段的多次变更合并起来
  */
 function queueFlush() {
+  // `currentFlushPromise` 充当“本轮是否已经预约刷新”的锁。
+  // 只要它存在，说明当前同步阶段再多次触发状态变更，也不会重复挂微任务。
   if (!currentFlushPromise) {
     currentFlushPromise = resolvedPromise.then(flushJobs)
   }
@@ -256,6 +258,7 @@ function queueFlush() {
 export function queuePostFlushCb(cb: SchedulerJobs): void {
   if (!isArray(cb)) {
     if (activePostFlushCbs && cb.id === -1) {
+      // `id === -1` 的 post 回调允许在当前活跃 post 队列中就近插入，常见于某些立即后置任务。
       activePostFlushCbs.splice(postFlushIndex + 1, 0, cb)
     } else if (!(cb.flags! & SchedulerJobFlags.QUEUED)) {
       pendingPostFlushCbs.push(cb)
@@ -294,6 +297,8 @@ export function flushPreFlushCbs(
   for (; i < queue.length; i++) {
     const cb = queue[i]
     if (cb && cb.flags! & SchedulerJobFlags.PRE) {
+      // 传入 instance 时，只清这个组件自己的 pre watcher。
+      // 这通常发生在组件更新前，需要先把自己相关的 pre 副作用跑完。
       if (instance && cb.id !== instance.uid) {
         continue
       }
@@ -303,6 +308,7 @@ export function flushPreFlushCbs(
       queue.splice(i, 1)
       i--
       if (cb.flags! & SchedulerJobFlags.ALLOW_RECURSE) {
+        // 允许递归的 pre watcher 在执行前先清掉 QUEUED，避免它自触发时被错误拦掉。
         cb.flags! &= ~SchedulerJobFlags.QUEUED
       }
       cb()
@@ -326,6 +332,8 @@ export function flushPreFlushCbs(
  */
 export function flushPostFlushCbs(seen?: CountMap): void {
   if (pendingPostFlushCbs.length) {
+    // post 队列允许被多处重复收集，这里统一去重并排序，
+    // 保证最终执行顺序仍然尽量接近组件更新顺序。
     const deduped = [...new Set(pendingPostFlushCbs)].sort(
       (a, b) => getId(a) - getId(b),
     )
@@ -333,6 +341,7 @@ export function flushPostFlushCbs(seen?: CountMap): void {
 
     // #1947 already has active queue, nested flushPostFlushCbs call
     if (activePostFlushCbs) {
+      // post 回调执行过程中又注册 post 回调时，直接拼到当前活跃队列尾部，避免丢失。
       activePostFlushCbs.push(...deduped)
       return
     }
@@ -354,6 +363,7 @@ export function flushPostFlushCbs(seen?: CountMap): void {
       if (cb.flags! & SchedulerJobFlags.ALLOW_RECURSE) {
         cb.flags! &= ~SchedulerJobFlags.QUEUED
       }
+      // 已处置回调不再执行，常见于组件/副作用在排队后又被卸载的情况。
       if (!(cb.flags! & SchedulerJobFlags.DISPOSED)) cb()
       cb.flags! &= ~SchedulerJobFlags.QUEUED
     }
@@ -372,6 +382,10 @@ export function flushPostFlushCbs(seen?: CountMap): void {
  */
 const getId = (job: SchedulerJob): number =>
   job.id == null ? (job.flags! & SchedulerJobFlags.PRE ? -1 : Infinity) : job.id
+// 这个规则保证：
+// - pre 任务默认最靠前
+// - 普通无 id 任务默认落到最后
+// - 有显式组件 uid 的任务则按父先子后的稳定顺序执行
 
 /**
  * 刷新整轮调度任务。
@@ -413,6 +427,8 @@ function flushJobs(seen?: CountMap) {
         if (job.flags! & SchedulerJobFlags.ALLOW_RECURSE) {
           job.flags! &= ~SchedulerJobFlags.QUEUED
         }
+        // 组件更新任务和普通调度任务共用一套执行循环，
+        // 这里只是根据 `job.i` 是否存在区分错误码，便于上层报错定位。
         callWithErrorHandling(
           job,
           job.i,
@@ -440,12 +456,20 @@ function flushJobs(seen?: CountMap) {
     currentFlushPromise = null
     // If new jobs have been added to either queue, keep flushing
     if (queue.length || pendingPostFlushCbs.length) {
+      // 刷新过程中继续产生的新任务不能留到下一轮事件循环，否则会打乱“同轮状态变更批处理”的语义。
       flushJobs(seen)
     }
   }
 }
 
 function checkRecursiveUpdates(seen: CountMap, fn: SchedulerJob) {
+  /**
+   * 检测同一个调度任务是否在一轮刷新里递归触发过多次。
+   *
+   * 为什么需要它：
+   * - 响应式副作用里如果又去写回自己的依赖，很容易形成死循环
+   * - 调度器需要在真正把浏览器拖死之前提前中断并报出组件上下文
+   */
   const count = seen.get(fn) || 0
   if (count > RECURSION_LIMIT) {
     const instance = fn.i

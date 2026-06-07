@@ -20,7 +20,16 @@ export const ssrContextKey: unique symbol = Symbol.for('v-scx')
  * - 仅应在存在当前组件实例的 setup / render 相关链路里调用
  */
 export const useSSRContext = <T = Record<string, any>>(): T | undefined => {
+  /**
+   * 读取当前 SSR 渲染链路注入的请求级上下文对象。
+   *
+   * 主要功能：
+   * - 本质上代理到 `inject(ssrContextKey)`
+   * - 在服务端 setup 期间为用户暴露当前请求上下文
+   * - 缺失上下文时在开发环境给出提示
+   */
   if (!__GLOBAL__) {
+    // `ctx` 是服务端渲染器在上层通过 provide 注入下来的请求级上下文对象。
     const ctx = inject<T>(ssrContextKey)
     if (!ctx) {
       __DEV__ &&

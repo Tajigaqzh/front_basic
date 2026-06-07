@@ -26,6 +26,19 @@ export let currentScopeId: string | null = null
 export function setCurrentRenderingInstance(
   instance: ComponentInternalInstance | null,
 ): ComponentInternalInstance | null {
+  /**
+   * 切换当前 render 上下文。
+   *
+   * 主要功能：
+   * - 记录“当前是谁在执行 render”
+   * - 同步更新当前组件对应的 scopeId
+   * - 返回旧上下文，供外层在 render 结束后恢复
+   *
+   * 所在链路：
+   * - `renderComponentRoot()`
+   * - `withCtx()` 包装后的插槽函数
+   * - vnode 创建时如果需要拿当前组件实例 / scopeId，也依赖这里维护的状态
+   */
   const prev = currentRenderingInstance
   currentRenderingInstance = instance
   currentScopeId = (instance && instance.type.__scopeId) || null
@@ -40,6 +53,12 @@ export function setCurrentRenderingInstance(
  * 作用：在创建提升静态 vnode 时临时压入当前 scope id。
  */
 export function pushScopeId(id: string | null): void {
+  /**
+   * 手动压入当前 scopeId。
+   *
+   * 主要用途：
+   * - 兼容旧编译产物在创建提升静态节点时显式切换 scopeId
+   */
   currentScopeId = id
 }
 
@@ -47,6 +66,12 @@ export function pushScopeId(id: string | null): void {
  * 作用：清空当前 scope id，供旧版编译产物兼容调用。
  */
 export function popScopeId(): void {
+  /**
+   * 弹出当前 scopeId。
+   *
+   * 这里的实现很简单，直接清空即可，
+   * 因为旧编译产物会自行按调用顺序成对控制 push / pop。
+   */
   currentScopeId = null
 }
 
@@ -54,6 +79,7 @@ export function popScopeId(): void {
  * 作用：兼容旧编译产物的 `withScopeId` 帮助函数。
  */
 export const withScopeId = (_id: string): typeof withCtx => withCtx
+// 新编译产物不会再实际依赖 `withScopeId`，这里保留只是为了兼容旧 helper 名称。
 
 export type ContextualRenderFn = {
   (...args: any[]): any
@@ -62,6 +88,11 @@ export type ContextualRenderFn = {
   _d: boolean /* disableTracking */
   _ns: boolean /* nonScoped */
 }
+// 这些私有标记由编译产物和运行时协作使用：
+// - `_n`：是否已经包过上下文
+// - `_c`：是否来自编译生成插槽
+// - `_d`：执行时是否默认关闭 block tracking
+// - `_ns`：compat 下是否为非作用域插槽
 
 /**
  * 作用：给编译生成的插槽函数绑定渲染上下文。
@@ -76,6 +107,19 @@ export function withCtx(
   ctx: ComponentInternalInstance | null = currentRenderingInstance,
   isNonScopedSlot?: boolean, // __COMPAT__ only
 ): Function {
+  /**
+   * 给插槽函数绑定所属组件的渲染上下文。
+   *
+   * 主要功能：
+   * - 执行插槽时临时切到插槽所属组件实例
+   * - 让插槽内部创建的 vnode 能拿到正确的 currentRenderingInstance / scopeId
+   * - 处理 block tracking，避免把插槽执行过程错误并入外层 block 收集
+   *
+   * 参数：
+   * - `fn`：原始插槽函数
+   * - `ctx`：插槽所属组件实例
+   * - `isNonScopedSlot`：兼容模式下标记是否为非作用域插槽
+   */
   if (!ctx) return fn
 
   // 已经包装过的函数直接复用，避免重复套壳。
@@ -93,6 +137,7 @@ export function withCtx(
     try {
       res = fn(...args)
     } finally {
+      // 插槽执行完必须恢复外层 render 上下文，否则后续 vnode 创建会错误归属到插槽拥有者组件。
       setCurrentRenderingInstance(prevInstance)
       if (renderFnWithContext._d) {
         setBlockTracking(1)

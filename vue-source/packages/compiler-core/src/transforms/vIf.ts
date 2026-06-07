@@ -1,3 +1,4 @@
+// 结构指令 transform 相关能力。
 import {
   type NodeTransform,
   type TransformContext,
@@ -41,10 +42,12 @@ import {
 } from '../utils'
 import { PatchFlags } from '@vue-source/shared'
 
+// v-if / v-else-if / v-else 会把普通元素改写成 IfNode 分支结构。
 export const transformIf: NodeTransform = createStructuralDirectiveTransform(
   /^(?:if|else|else-if)$/,
   (node, dir, context) => {
     return processIf(node, dir, context, (ifNode, branch, isRoot) => {
+      // 同层级 v-if 链会被展开成一串条件分支，key 需要随着前面分支数递增。
       // #1587: We need to dynamically increment the key based on the current
       // node's sibling nodes, since chained v-if/else branches are
       // rendered at the same depth
@@ -62,12 +65,15 @@ export const transformIf: NodeTransform = createStructuralDirectiveTransform(
       // transformed.
       return () => {
         if (isRoot) {
+          // 根分支先生成条件表达式的起点。
           ifNode.codegenNode = createCodegenNodeForBranch(
             branch,
             key,
             context,
           ) as IfConditionalExpression
         } else {
+          // 后续分支挂到前一个条件表达式的 alternate 上，形成 if/else-if/else 链。
+          // 后续分支依次拼到前一个条件表达式的 alternate 上。
           // attach this branch's codegen node to the v-if root.
           const parentCondition = getParentCondition(ifNode.codegenNode!)
           parentCondition.alternate = createCodegenNodeForBranch(
@@ -92,6 +98,7 @@ export function processIf(
     isRoot: boolean,
   ) => (() => void) | undefined,
 ): (() => void) | undefined {
+  // v-if / v-else-if 必须有条件表达式；没有时会报错并回退成 `true`。
   if (
     dir.name !== 'else' &&
     (!dir.exp || !(dir.exp as SimpleExpressionNode).content.trim())
@@ -104,6 +111,7 @@ export function processIf(
   }
 
   if (!__BROWSER__ && context.prefixIdentifiers && dir.exp) {
+    // v-if 结构转换早于普通表达式转换，所以这里要手动处理一次表达式前缀。
     // dir.exp can only be simple expression because vIf transform is applied
     // before expression transform.
     dir.exp = processExpression(dir.exp as SimpleExpressionNode, context)
@@ -114,6 +122,7 @@ export function processIf(
   }
 
   if (dir.name === 'if') {
+    // 首个分支会用 IfNode 容器替换原始元素节点。
     const branch = createIfBranch(node, dir)
     const ifNode: IfNode = {
       type: NodeTypes.IF,
@@ -125,6 +134,7 @@ export function processIf(
       return processCodegen(ifNode, branch, true)
     }
   } else {
+    // v-else / v-else-if 必须向前找到紧邻的 v-if。
     // locate the adjacent v-if
     const siblings = context.parent!.children
     const comments = []
@@ -132,6 +142,7 @@ export function processIf(
     while (i-- >= -1) {
       const sibling = siblings[i]
       if (sibling && isCommentOrWhitespace(sibling)) {
+        // 中间允许存在注释或纯空白，这些节点会被跳过或并入分支。
         context.removeNode(sibling)
         if (__DEV__ && sibling.type === NodeTypes.COMMENT) {
           comments.unshift(sibling)
@@ -188,6 +199,7 @@ export function processIf(
         const onExit = processCodegen && processCodegen(sibling, branch, false)
         // since the branch was removed, it will not be traversed.
         // make sure to traverse here.
+        // 当前节点已经从原 children 中摘掉，所以这里需要手动遍历该分支。
         traverseNode(branch, context)
         // call on exit
         if (onExit) onExit()
@@ -210,6 +222,7 @@ function createIfBranch(node: ElementNode, dir: DirectiveNode): IfBranchNode {
     type: NodeTypes.IF_BRANCH,
     loc: node.loc,
     condition: dir.name === 'else' ? undefined : dir.exp,
+    // `<template v-if>` 自己不渲染，直接把内部 children 作为分支内容。
     children: isTemplateIf && !findDir(node, 'for') ? node.children : [node],
     userKey: findProp(node, `key`),
     isTemplateIf,
@@ -222,6 +235,7 @@ function createCodegenNodeForBranch(
   context: TransformContext,
 ): IfConditionalExpression | BlockCodegenNode | MemoExpression {
   if (branch.condition) {
+    // 有条件的分支会编译成三元表达式；条件不成立时回退到注释占位节点。
     return createConditionalExpression(
       branch.condition,
       createChildrenCodegenNode(branch, keyIndex, context),
@@ -233,6 +247,7 @@ function createCodegenNodeForBranch(
       ]),
     ) as IfConditionalExpression
   } else {
+    // v-else 没有条件，直接返回分支内容。
     return createChildrenCodegenNode(branch, keyIndex, context)
   }
 }
@@ -243,6 +258,7 @@ function createChildrenCodegenNode(
   context: TransformContext,
 ): BlockCodegenNode | MemoExpression {
   const { helper } = context
+  // 每个分支都带唯一 key，避免运行时错误复用不同分支的节点。
   const keyProperty = createObjectProperty(
     `key`,
     createSimpleExpression(
@@ -257,6 +273,7 @@ function createChildrenCodegenNode(
   const needFragmentWrapper =
     children.length !== 1 || firstChild.type !== NodeTypes.ELEMENT
   if (needFragmentWrapper) {
+    // 多根分支或非元素根分支时，需要外层 Fragment 包装。
     if (children.length === 1 && firstChild.type === NodeTypes.FOR) {
       // optimize away nested fragments when child is a ForNode
       const vnodeCall = firstChild.codegenNode!
@@ -274,6 +291,7 @@ function createChildrenCodegenNode(
         patchFlag |= PatchFlags.DEV_ROOT_FRAGMENT
       }
 
+      // 典型结果类似 createBlock(Fragment, { key }, children)
       return createVNodeCall(
         context,
         helper(FRAGMENT),
@@ -297,6 +315,7 @@ function createChildrenCodegenNode(
     if (vnodeCall.type === NodeTypes.VNODE_CALL) {
       convertToBlock(vnodeCall, context)
     }
+    // 单根元素分支直接把 key 注入到该元素 vnode 上。
     // inject branch key
     injectProp(vnodeCall, keyProperty, context)
     return ret

@@ -10,10 +10,12 @@ export interface CoreCompilerError extends CompilerError {
 }
 
 export function defaultOnError(error: CompilerError): never {
+  // 默认行为是直接抛错；上层也可以通过 onError 改成“收集但不中断”。
   throw error
 }
 
 export function defaultOnWarn(msg: CompilerError): void {
+  // warning 默认只在开发环境打印。
   __DEV__ && console.warn(`[Vue warn] ${msg.message}`)
 }
 
@@ -27,6 +29,7 @@ export function createCompilerError<T extends number>(
   messages?: { [code: number]: string },
   additionalMessage?: string,
 ): InferCompilerError<T> {
+  // 统一错误工厂：开发环境给可读消息，生产环境给错误码文档链接。
   const msg =
     __DEV__ || !__BROWSER__
       ? (messages || errorMessages)[code] + (additionalMessage || ``)
@@ -38,6 +41,7 @@ export function createCompilerError<T extends number>(
 }
 
 export enum ErrorCodes {
+  // parser、transform、通用编译错误都统一编号，便于压缩和文档映射。
   // parse errors
   ABRUPT_CLOSING_OF_EMPTY_COMMENT,
   CDATA_IN_HTML_CONTENT,
@@ -110,6 +114,7 @@ export enum ErrorCodes {
 }
 
 export const errorMessages: Record<ErrorCodes, string> = {
+  // 这里只维护基础英文错误消息；最终展示策略由 onError/onWarn 决定。
   // parse errors
   [ErrorCodes.ABRUPT_CLOSING_OF_EMPTY_COMMENT]: 'Illegal comment.',
   [ErrorCodes.CDATA_IN_HTML_CONTENT]:

@@ -34,6 +34,9 @@ const isNativeOn = (key: string) =>
   // lowercase letter
   key.charCodeAt(2) > 96 &&
   key.charCodeAt(2) < 123
+// 这里特意只识别小写原生事件属性，目的是区分：
+// - `onclick` 这类浏览器原生 prop
+// - `onClick` 这类 Vue 组件监听器命名风格
 
 type DOMRendererOptions = RendererOptions<Node, Element>
 
@@ -52,6 +55,21 @@ export const patchProp: DOMRendererOptions['patchProp'] = (
   namespace,
   parentComponent,
 ) => {
+  /**
+   * DOM 属性更新总分发器。
+   *
+   * 主要功能：
+   * - 按 key 语义把更新路由到 class / style / events / props / attrs
+   * - 处理 SVG、表单字段、自定义元素等特殊分支
+   *
+   * 参数：
+   * - `el`：目标元素
+   * - `key`：当前要更新的字段名
+   * - `prevValue`：旧值
+   * - `nextValue`：新值
+   * - `namespace`：命名空间，用来区分 HTML / SVG / MathML
+   * - `parentComponent`：当前父组件实例，事件错误处理等场景会用到
+   */
   const isSVG = namespace === 'svg'
   if (key === 'class') {
     patchClass(el, nextValue, isSVG)
@@ -60,6 +78,7 @@ export const patchProp: DOMRendererOptions['patchProp'] = (
   } else if (isOn(key)) {
     // ignore v-model listeners
     if (!isModelListener(key)) {
+      // 原生 DOM 事件统一下沉到 events 模块；`v-model` 生成的组件监听器不应落到这里。
       patchEvent(el, key, prevValue, nextValue, parentComponent)
     }
   } else if (
@@ -69,6 +88,8 @@ export const patchProp: DOMRendererOptions['patchProp'] = (
         ? ((key = key.slice(1)), false)
         : shouldSetAsProp(el, key, nextValue, isSVG)
   ) {
+    // `.` 前缀表示强制按 DOM prop 写入，`^` 前缀表示强制按 attribute 写入。
+    // 否则交给 `shouldSetAsProp()` 根据平台规则决定。
     patchDOMProp(el, key, nextValue, parentComponent)
     // #6007 also set form state as attributes so they work with
     // <input type="reset"> or libs / extensions that expect attributes
@@ -77,6 +98,7 @@ export const patchProp: DOMRendererOptions['patchProp'] = (
       !el.tagName.includes('-') &&
       (key === 'value' || key === 'checked' || key === 'selected')
     ) {
+      // 表单状态除了写 prop，还额外补 attribute，兼容 reset 和某些依赖 attribute 的外部库。
       patchAttr(el, key, nextValue, isSVG, parentComponent, key !== 'value')
     }
   } else if (
@@ -88,6 +110,7 @@ export const patchProp: DOMRendererOptions['patchProp'] = (
       ((el as VueElement)._def.__asyncLoader &&
         (/[A-Z]/.test(key) || !isString(nextValue))))
   ) {
+    // Vue 自定义元素声明过的 props 应直接走组件 prop 语义，而不是普通 attribute 字符串语义。
     patchDOMProp(el, camelize(key), nextValue, parentComponent, key)
   } else {
     // special case for <input v-model type="checkbox"> with
@@ -95,6 +118,7 @@ export const patchProp: DOMRendererOptions['patchProp'] = (
     // store value as dom properties since non-string values will be
     // stringified.
     if (key === 'true-value') {
+      // checkbox 的 true/false-value 可能是任意类型，必须缓存原值，不能只保留 attribute 字符串。
       ;(el as any)._trueValue = nextValue
     } else if (key === 'false-value') {
       ;(el as any)._falseValue = nextValue
@@ -114,6 +138,14 @@ function shouldSetAsProp(
   value: unknown,
   isSVG: boolean,
 ) {
+  /**
+   * 判断某个字段本次是否应当走 `el[key] = value`。
+   *
+   * 为什么不能一律走 prop：
+   * - 有些字段在 DOM property 上会产生错误类型转换
+   * - 有些字段是只读的
+   * - 有些字段在 SVG 或特定标签上只能作为 attribute 生效
+   */
   // SVG 大多数字段都必须走 attribute；只有极少数如 innerHTML/textContent/原生事件例外。
   if (isSVG) {
     // most keys must be set as attribute on svg elements to work
@@ -181,6 +213,7 @@ function shouldSetAsProp(
 
   // native onclick with string value, must be set as attribute
   if (isNativeOn(key) && isString(value)) {
+    // 原生 `onclick="..."` 字符串属于 attribute 语义，直接设 prop 会产生不一致行为。
     return false
   }
 
@@ -191,6 +224,13 @@ function shouldSetAsProp(
  * 判断自定义元素上的字段是否应当按 prop 处理。
  */
 function shouldSetAsPropForVueCE(el: VueElement, key: string) {
+  /**
+   * 判断 Vue 自定义元素上的字段是否应按 prop 写入。
+   *
+   * 原因：
+   * - 自定义元素既可能接受 attribute，也可能声明真正的组件 props
+   * - 这里需要对照其 props 定义，决定是否走 prop 分支
+   */
   const props = // @ts-expect-error _def is private
     el._def.props as Record<string, unknown> | string[] | undefined
   if (!props) {
@@ -198,6 +238,7 @@ function shouldSetAsPropForVueCE(el: VueElement, key: string) {
   }
 
   const camelKey = camelize(key)
+  // 这里做 camelize，是为了兼容模板里 kebab-case 与组件 props camelCase 的命名差异。
   return Array.isArray(props)
     ? props.some(prop => camelize(prop) === camelKey)
     : Object.keys(props).some(prop => camelize(prop) === camelKey)

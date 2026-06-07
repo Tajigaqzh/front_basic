@@ -16,13 +16,13 @@ import {
   hasDynamicKeyVBind,
   transformModel,
 } from '@vue-source/compiler-dom'
+import type { DirectiveTransformResult } from '@vue-source/compiler-core'
 import {
   SSR_INCLUDE_BOOLEAN_ATTR,
   SSR_LOOSE_CONTAIN,
   SSR_LOOSE_EQUAL,
   SSR_RENDER_DYNAMIC_MODEL,
 } from '../runtimeHelpers'
-import type { DirectiveTransformResult } from '../../../compiler-core/src/transform'
 
 export const ssrTransformModel: DirectiveTransform = (dir, node, context) => {
   const model = dir.exp!

@@ -1,8 +1,16 @@
 /**
- * 文件作用：处理某一类 DOM 属性写入。
+ * 文件作用：处理运行时 DOM property 写入。
  *
- * 当前文件 props.ts 专门负责一类浏览器属性更新策略，
- * 让 patchProp 可以把总分发继续下沉到更细的实现里。
+ * 这份文件负责那些应当通过 `el[key] = value` 生效的字段，
+ * 例如：
+ * - `value`
+ * - `checked`
+ * - `innerHTML`
+ * - `textContent`
+ *
+ * 和 `attrs.ts` 的区别是：
+ * - 这里关注的是宿主对象属性语义
+ * - 那边关注的是 HTML/SVG attribute 语义
  */
 
 import { DeprecationTypes, compatUtils, warn } from '@vue-source/runtime-core'
@@ -54,6 +62,7 @@ export function patchDOMProp(
     // `option.value` 读取时会回退到文本内容，所以这里必须和 attribute 做比较。
     const oldValue =
       tag === 'OPTION' ? el.getAttribute('value') || '' : el.value
+    // DOM property 最终总是字符串语义，这里先把传入值规范成浏览器真正会持有的形态。
     const newValue =
       value == null
         ? // checkbox 的 value 在空值时要保持浏览器默认的 `on`。
@@ -62,6 +71,7 @@ export function patchDOMProp(
           : ''
         : String(value)
     if (oldValue !== newValue || !('_value' in el)) {
+      // 只有值确实变化，或第一次还没缓存原始值时，才真正触发 DOM 赋值。
       el.value = newValue
     }
     if (value == null) {
@@ -113,6 +123,7 @@ export function patchDOMProp(
 
   // 某些原生属性在赋值时会做校验，或者只有 getter 没有 setter，需要兜底 try/catch。
   try {
+    // 大多数 DOM prop 直接赋值即可，异常通常来自只读属性或浏览器原生校验失败。
     el[key] = value
   } catch (e: any) {
     if (__DEV__ && !needRemove) {

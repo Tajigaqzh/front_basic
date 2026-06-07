@@ -68,6 +68,17 @@ export const isAsyncWrapper = (i: ComponentInternalInstance | VNode): boolean =>
 export function defineAsyncComponent<
   T extends Component = { new (): ComponentPublicInstance },
 >(source: AsyncComponentLoader<T> | AsyncComponentOptions<T>): T {
+  /**
+   * 定义一个异步组件包装器。
+   *
+   * 主要功能：
+   * - 接收 loader 或完整异步组件配置
+   * - 统一处理 loading / error / timeout / retry
+   * - 返回一个标准组件定义，供渲染器像普通组件一样挂载
+   *
+   * 参数：
+   * - `source`：异步组件 loader，或包含控制项的配置对象
+   */
   if (isFunction(source)) {
     source = { loader: source }
   }
@@ -91,12 +102,22 @@ export function defineAsyncComponent<
   // `retries` 记录当前已经重试过多少次，给用户 `onError` 回调判断是否继续重试。
   let retries = 0
   const retry = () => {
+    // 重试前必须清空 `pendingRequest`，否则后续 `load()` 还会复用上一次失败请求。
     retries++
     pendingRequest = null
     return load()
   }
 
   const load = (): Promise<ConcreteComponent> => {
+    /**
+     * 发起或复用当前这次异步组件加载请求。
+     *
+     * 主要功能：
+     * - 去重并发加载
+     * - 处理用户自定义重试逻辑
+     * - 兼容 ESModule default 导出
+     * - 缓存最终解析出的真实组件
+     */
     let thisRequest: Promise<ConcreteComponent>
     return (
       pendingRequest ||
@@ -146,6 +167,14 @@ export function defineAsyncComponent<
     __asyncLoader: load,
 
     __asyncHydrate(el, instance, hydrate) {
+      /**
+       * 惰性 hydration 入口。
+       *
+       * 主要功能：
+       * - 等异步组件 resolve 完成后再激活已有 DOM
+       * - 若用户配置了 `hydrateStrategy`，交给策略决定具体触发时机
+       * - 如果组件在 hydration 前已经被更新，则直接跳过本次懒激活
+       */
       let patched = false
       ;(instance.bu || (instance.bu = [])).push(() => (patched = true))
       const performHydrate = () => {
@@ -183,6 +212,14 @@ export function defineAsyncComponent<
     },
 
     setup() {
+      /**
+       * 异步组件包装器自己的 setup。
+       *
+       * 它会根据当前环境分成几条路径：
+       * - 已解析：直接渲染真实组件
+       * - Suspense / SSR：返回 Promise，让上层等待
+       * - 普通客户端：维护 loading/error/local 状态并按状态切换渲染结果
+       */
       const instance = currentInstance!
       markAsyncBoundary(instance)
 
@@ -279,6 +316,13 @@ function createInnerComp(
   comp: ConcreteComponent,
   parent: ComponentInternalInstance,
 ) {
+  /**
+   * 基于异步包装器当前的 vnode 信息，创建真正要渲染的内部组件 vnode。
+   *
+   * 为什么需要这层：
+   * - 异步包装器本身只负责加载状态控制
+   * - 真正渲染时仍要把原来的 props / children / ref / 自定义元素回调透传给内部组件
+   */
   const { ref, props, children, ce } = parent.vnode
   const vnode = createVNode(comp, props, children)
   // ensure inner component inherits the async wrapper's ref owner

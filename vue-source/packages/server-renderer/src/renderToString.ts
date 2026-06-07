@@ -7,10 +7,16 @@ import {
   ssrUtils,
 } from '@vue-source/runtime-dom'
 import { isPromise, isString } from '@vue-source/shared'
-import { type SSRBuffer, type SSRContext, renderComponentVNode } from './render'
+import { type SSRBuffer, type SSRContext } from './buffer'
+import { renderComponentVNode } from './render'
 
 const { isVNode } = ssrUtils
 
+// SSR 渲染阶段先构建 buffer 树，最后再把树拍平成字符串。
+// 这里的递归函数负责处理三种节点：
+// 1. 普通字符串
+// 2. 子 buffer
+// 3. 异步组件 / 异步 setup 产生的 Promise<buffer>
 function nestedUnrollBuffer(
   buffer: SSRBuffer,
   parentRet: string,
@@ -28,6 +34,8 @@ function nestedUnrollBuffer(
       continue
     }
 
+    // Promise resolve 后会把结果回填到原 buffer 中，
+    // 这样继续递归时不需要重新走已经完成的异步分支。
     if (isPromise(item)) {
       return item.then(nestedItem => {
         buffer[i] = nestedItem
@@ -53,14 +61,14 @@ export function unrollBuffer(buffer: SSRBuffer): Promise<string> | string {
   return nestedUnrollBuffer(buffer, '', 0)
 }
 
+// 同步路径专门拆出来，是为了避免无异步内容时产生多余的 await tick。
 function unrollBufferSync(buffer: SSRBuffer): string {
   let ret = ''
   for (let i = 0; i < buffer.length; i++) {
-    let item = buffer[i]
+    const item = buffer[i]
     if (isString(item)) {
       ret += item
     } else {
-      // since this is a sync buffer, child buffers are never promises
       ret += unrollBufferSync(item as SSRBuffer)
     }
   }
@@ -71,22 +79,23 @@ export async function renderToString(
   input: App | VNode,
   context: SSRContext = {},
 ): Promise<string> {
+  // 直接传入 VNode 时，包一层 app，确保 provide/appContext/teleport 上下文完整。
   if (isVNode(input)) {
-    // raw vnode, wrap with app (for context)
     return renderToString(createApp({ render: () => input }), context)
   }
 
-  // rendering an app
   const vnode = createVNode(input._component, input._props)
   vnode.appContext = input._context
-  // provide the ssr context to the tree
+
+  // SSR context 通过 provide 注入到整棵树里，Teleport、watch cleanup 等都依赖它。
   input.provide(ssrContextKey, context)
   const buffer = await renderComponentVNode(vnode)
-
   const result = await unrollBuffer(buffer as SSRBuffer)
 
+  // teleport 内容不会直接拼进主 HTML，而是单独汇总到 context.teleports。
   await resolveTeleports(context)
 
+  // SSR 中为了支持 watch/computed 可能会注册清理句柄，渲染结束后统一释放。
   if (context.__watcherHandles) {
     for (const unwatch of context.__watcherHandles) {
       unwatch()
@@ -100,8 +109,8 @@ export async function resolveTeleports(context: SSRContext): Promise<void> {
   if (context.__teleportBuffers) {
     context.teleports = context.teleports || {}
     for (const key in context.__teleportBuffers) {
-      // note: it's OK to await sequentially here because the Promises were
-      // created eagerly in parallel.
+      // Teleport 的 Promise 在前面阶段已经并行创建过了，
+      // 这里顺序 await 只是为了按目标容器稳定落盘。
       context.teleports[key] = await unrollBuffer(
         await Promise.all([context.__teleportBuffers[key]]),
       )

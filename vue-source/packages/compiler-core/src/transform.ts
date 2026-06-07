@@ -180,6 +180,7 @@ export function createTransformContext(
 
     // state
     root,
+    // 这些集合/数组会在遍历 AST 时逐步填充，最后挂回 root 供 codegen 使用。
     helpers: new Map(),
     components: new Set(),
     directives: new Set(),
@@ -203,6 +204,7 @@ export function createTransformContext(
 
     // methods
     helper(name) {
+      // helper 用引用计数保存，避免重复注入同一个运行时辅助函数。
       const count = context.helpers.get(name) || 0
       context.helpers.set(name, count + 1)
       return name
@@ -264,6 +266,7 @@ export function createTransformContext(
     },
     onNodeRemoved: NOOP,
     addIdentifiers(exp) {
+      // prefixIdentifiers 模式下需要跟踪局部变量，判断表达式是否要补 `_ctx.`。
       // identifier tracking only happens in non-browser builds.
       if (!__BROWSER__) {
         if (isString(exp)) {
@@ -287,6 +290,7 @@ export function createTransformContext(
       }
     },
     hoist(exp) {
+      // 静态表达式提升到 render 外部，生成 `_hoisted_n` 常量复用。
       if (isString(exp)) exp = createSimpleExpression(exp)
       context.hoists.push(exp)
       const identifier = createSimpleExpression(
@@ -299,6 +303,7 @@ export function createTransformContext(
       return identifier
     },
     cache(exp, isVNode = false, inVOnce = false) {
+      // 生成缓存表达式，常用于缓存事件处理器或 v-once/v-memo 结果。
       const cacheExp = createCacheExpression(
         context.cached.length,
         exp,
@@ -330,15 +335,19 @@ export function createTransformContext(
 }
 
 export function transform(root: RootNode, options: TransformOptions): void {
+  // transform 阶段的共享上下文：保存配置、遍历状态以及 helper/hoist 等收集结果。
   const context = createTransformContext(root, options)
+  // 深度优先遍历 AST，依次执行所有 node transform。
   traverseNode(root, context)
   if (options.hoistStatic) {
+    // 静态提升是一个额外优化步骤，依赖前面 transform 已经标注好常量信息。
     cacheStatic(root, context)
   }
   if (!options.ssr) {
+    // 非 SSR 模式下，需要补出 render 函数最终 return 的根节点表达式。
     createRootCodegen(root, context)
   }
-  // finalize meta information
+  // 把 transform 期间收集的元信息回填到 root，供 codegen 统一读取。
   root.helpers = new Set([...context.helpers.keys()])
   root.components = [...context.components]
   root.directives = [...context.directives]
@@ -357,6 +366,7 @@ function createRootCodegen(root: RootNode, context: TransformContext) {
   const { helper } = context
   const { children } = root
   if (children.length === 1) {
+    // 单根节点时尽量直接复用这个根节点自己的 codegenNode。
     const singleElementRootChild = getSingleElementRoot(root)
     // if the single child is an element, turn it into a block.
     if (singleElementRootChild && singleElementRootChild.codegenNode) {
@@ -364,6 +374,7 @@ function createRootCodegen(root: RootNode, context: TransformContext) {
       // SimpleExpressionNode
       const codegenNode = singleElementRootChild.codegenNode
       if (codegenNode.type === NodeTypes.VNODE_CALL) {
+        // 单根元素默认转成 block，运行时可更精确追踪动态子节点。
         convertToBlock(codegenNode, context)
       }
       root.codegenNode = codegenNode
@@ -374,6 +385,7 @@ function createRootCodegen(root: RootNode, context: TransformContext) {
       root.codegenNode = children[0]
     }
   } else if (children.length > 1) {
+    // 多根节点会统一包成 Fragment。
     // root has multiple nodes - return a fragment block.
     let patchFlag = PatchFlags.STABLE_FRAGMENT
     // check if the fragment actually contains a single valid child with
@@ -398,6 +410,7 @@ function createRootCodegen(root: RootNode, context: TransformContext) {
     )
   } else {
     // no children = noop. codegen will return null.
+    // 空模板最终会生成 return null。
   }
 }
 
@@ -412,6 +425,7 @@ export function traverseChildren(
   for (; i < parent.children.length; i++) {
     const child = parent.children[i]
     if (isString(child)) continue
+    // 维护父节点、祖父节点和当前下标，便于 transform 替换/删除节点。
     context.grandParent = context.parent
     context.parent = parent
     context.childIndex = i
@@ -424,11 +438,13 @@ export function traverseNode(
   node: RootNode | TemplateChildNode,
   context: TransformContext,
 ): void {
+  // currentNode 允许 transform 在遍历过程中替换或删除当前节点。
   context.currentNode = node
   // apply transform plugins
   const { nodeTransforms } = context
   const exitFns = []
   for (let i = 0; i < nodeTransforms.length; i++) {
+    // 依次执行进入阶段 transform；它们可以直接修改当前节点。
     const onExit = nodeTransforms[i](node, context)
     if (onExit) {
       if (isArray(onExit)) {
@@ -442,10 +458,12 @@ export function traverseNode(
       return
     } else {
       // node may have been replaced
+      // 如果 transform 替换了当前节点，后续流程应基于新节点继续。
       node = context.currentNode
     }
   }
 
+  // 先执行进入阶段 transform，再递归子节点，最后逆序执行退出回调。
   switch (node.type) {
     case NodeTypes.COMMENT:
       if (!context.ssr) {
@@ -479,6 +497,7 @@ export function traverseNode(
   context.currentNode = node
   let i = exitFns.length
   while (i--) {
+    // 退出回调逆序执行，形成类似编译器插件栈的包裹效果。
     exitFns[i]()
   }
 }
@@ -503,6 +522,7 @@ export function createStructuralDirectiveTransform(
       for (let i = 0; i < props.length; i++) {
         const prop = props[i]
         if (prop.type === NodeTypes.DIRECTIVE && matches(prop.name)) {
+          // v-if / v-for 这类结构指令会改写 AST 结构，必须先从 props 中移除。
           // structural directives are removed to avoid infinite recursion
           // also we remove them *before* applying so that it can further
           // traverse itself in case it moves the node around
@@ -512,6 +532,7 @@ export function createStructuralDirectiveTransform(
           if (onExit) exitFns.push(onExit)
         }
       }
+      // 结构指令本身也可能返回退出阶段逻辑。
       return exitFns
     }
   }

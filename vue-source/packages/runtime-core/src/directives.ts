@@ -23,11 +23,16 @@ export interface DirectiveBinding<
   Modifiers extends string = string,
   Arg = any,
 > {
+  // 当前指令所属的组件公开实例；供指令钩子在需要时访问组件上下文。
   instance: ComponentPublicInstance | Record<string, any> | null
+  // 本次 patch 传给指令的当前值。
   value: Value
+  // 更新阶段的旧值；首次挂载时通常为 null/undefined。
   oldValue: Value | null
   arg?: Arg
+  // 形如 `v-demo.foo.bar` 中的 `{ foo: true, bar: true }`。
   modifiers: DirectiveModifiers<Modifiers>
+  // 当前绑定最终归一化后的指令定义对象。
   dir: ObjectDirective<any, Value, Modifiers, Arg>
 }
 
@@ -112,6 +117,7 @@ export type DirectiveModifiers<K extends string = string> = Partial<
  * 作用：校验用户自定义指令名称是否与内置指令冲突。
  */
 export function validateDirectiveName(name: string): void {
+  // 内置指令 id 具有固定运行时语义，用户重名会造成编译/执行期歧义。
   if (isBuiltInDirective(name)) {
     warn('Do not use built-in directive ids as custom directive id: ' + name)
   }
@@ -161,6 +167,7 @@ export function withDirectives<T extends VNode>(
         dir,
         instance,
         value,
+        // 首次挂载还没有旧值，这里先留空，更新阶段再由 invokeDirectiveHook 回填。
         oldValue: void 0,
         arg,
         modifiers,
@@ -186,6 +193,7 @@ export function invokeDirectiveHook(
   name: keyof ObjectDirective,
 ): void {
   const bindings = vnode.dirs!
+  // 更新阶段旧 vnode 上的 dirs 与新 vnode 位置一一对应，便于按索引回填 oldValue。
   const oldBindings = prevVNode && prevVNode.dirs!
   for (let i = 0; i < bindings.length; i++) {
     const binding = bindings[i]
@@ -195,6 +203,7 @@ export function invokeDirectiveHook(
     }
     let hook = binding.dir[name] as DirectiveHook | DirectiveHook[] | undefined
     if (__COMPAT__ && !hook) {
+      // compat 模式下还要映射 Vue 2 的旧指令钩子命名。
       hook = mapCompatDirectiveHook(name, binding.dir, instance)
     }
     if (hook) {

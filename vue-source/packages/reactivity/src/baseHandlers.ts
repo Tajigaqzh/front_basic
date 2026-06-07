@@ -53,6 +53,13 @@ class BaseReactiveHandler implements ProxyHandler<Target> {
   ) {}
 
   get(target: Target, key: string | symbol, receiver: object): any {
+    // get 是普通对象响应式的核心入口。
+    // 一次属性读取在这里会依次经历：
+    // 1. 处理内部标记位
+    // 2. 对数组方法做特殊增强
+    // 3. 用 Reflect.get 保持 JS 原生读取语义
+    // 4. 调用 track 建立依赖
+    // 5. 对 ref 做解包，对嵌套对象做懒代理
     if (key === ReactiveFlags.SKIP) return target[ReactiveFlags.SKIP]
 
     const isReadonly = this._isReadonly,
@@ -145,6 +152,13 @@ class MutableReactiveHandler extends BaseReactiveHandler {
     value: unknown,
     receiver: object,
   ): boolean {
+    // set 是普通对象写入的核心入口。
+    // 它不仅做赋值，还要判断这次写入在响应式语义里属于：
+    // - 新增属性 ADD
+    // - 修改已有属性 SET
+    // - 以及值是否真的发生了变化
+    //
+    // 这些判断结果会决定 trigger 时应该通知哪些 dep。
     let oldValue = target[key]
     const isArrayWithIntegerKey = isArray(target) && isIntegerKey(key)
     if (!this._isShallow) {
@@ -195,6 +209,7 @@ class MutableReactiveHandler extends BaseReactiveHandler {
     target: Record<string | symbol, unknown>,
     key: string | symbol,
   ): boolean {
+    // delete 只有在目标上原本确实存在该 key 且删除成功时才触发依赖。
     const hadKey = hasOwn(target, key)
     const oldValue = target[key]
     const result = Reflect.deleteProperty(target, key)
@@ -205,6 +220,8 @@ class MutableReactiveHandler extends BaseReactiveHandler {
   }
 
   has(target: Record<string | symbol, unknown>, key: string | symbol): boolean {
+    // `key in obj` 这种存在性判断也要参与依赖收集，
+    // 否则 effect 中依赖 `in` 的逻辑不会在属性增删时更新。
     const result = Reflect.has(target, key)
     if (!isSymbol(key) || !builtInSymbols.has(key)) {
       track(target, TrackOpTypes.HAS, key)
@@ -213,6 +230,8 @@ class MutableReactiveHandler extends BaseReactiveHandler {
   }
 
   ownKeys(target: Record<string | symbol, unknown>): (string | symbol)[] {
+    // `for...in` / `Object.keys` / `Reflect.ownKeys` 这类枚举操作，
+    // 依赖的是“对象结构是否变化”，所以统一追踪 ITERATE_KEY。
     track(
       target,
       TrackOpTypes.ITERATE,

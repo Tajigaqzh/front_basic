@@ -364,6 +364,12 @@ function baseCreateRenderer(
   options: RendererOptions,
   createHydrationFns?: typeof createHydrationFunctions,
 ): any {
+  // runtime-core 渲染器本身不直接依赖 DOM。
+  // 它只依赖宿主层注入的 node ops / patchProp：
+  // - runtime-dom 提供浏览器实现
+  // - 自定义 renderer 可以提供 native/canvas/小程序等实现
+  //
+  // 所以这里本质上是“平台无关的 vnode diff 与调度内核”。
   // compile-time feature flags check
   if (__ESM_BUNDLER__ && !__TEST__) {
     initFeatureFlags()
@@ -1115,6 +1121,7 @@ function baseCreateRenderer(
   ) => {
     const fragmentStartAnchor = (n2.el = n1 ? n1.el : hostCreateText(''))!
     const fragmentEndAnchor = (n2.anchor = n1 ? n1.anchor : hostCreateText(''))!
+    // Fragment 自己不对应真实元素，只靠前后两个锚点界定整段 children 的宿主范围。
 
     let { patchFlag, dynamicChildren, slotScopeIds: fragmentSlotScopeIds } = n2
 
@@ -1131,6 +1138,7 @@ function baseCreateRenderer(
 
     // check if this is a slot fragment with :slotted scope ids
     if (fragmentSlotScopeIds) {
+      // 插槽 fragment 若携带额外 scope id，需要向下继续拼接传递给其所有后代元素。
       slotScopeIds = slotScopeIds
         ? slotScopeIds.concat(fragmentSlotScopeIds)
         : fragmentSlotScopeIds
@@ -1168,6 +1176,7 @@ function baseCreateRenderer(
       ) {
         // a stable fragment (template root or <template v-for>) doesn't need to
         // patch children order, but it may contain dynamicChildren.
+        // 稳定 fragment 的“根层顺序”由编译器保证不变，因此只需下钻更新其中已标记的动态孩子。
         patchBlockChildren(
           n1.dynamicChildren,
           dynamicChildren,
@@ -1221,6 +1230,9 @@ function baseCreateRenderer(
     slotScopeIds: string[] | null,
     optimized: boolean,
   ) => {
+    // 组件分支非常清晰：
+    // - 没有旧 vnode：首次挂载
+    // - 有旧 vnode：尝试复用旧实例并决定是否更新
     n2.slotScopeIds = slotScopeIds
     if (n1 == null) {
       if (n2.shapeFlag & ShapeFlags.COMPONENT_KEPT_ALIVE) {
@@ -1257,6 +1269,10 @@ function baseCreateRenderer(
     namespace: ElementNamespace,
     optimized,
   ) => {
+    // 组件首次挂载主线：
+    // 1. createComponentInstance 创建实例
+    // 2. setupComponent 初始化 props/slots/setup/render
+    // 3. setupRenderEffect 安装渲染副作用，并在首轮执行时真正把子树 patch 到宿主节点
     // 2.x compat may pre-create the component instance before actually
     // mounting
     const compatMountInstance =
@@ -1308,6 +1324,7 @@ function baseCreateRenderer(
       // Give it a placeholder if this is not hydration
       // TODO handle self-defined fallback
       if (!initialVNode.el) {
+        // 占位注释节点让父级 DOM 结构先稳定下来，等异步 setup resolve 后再原地替换。
         const placeholder = (instance.subTree = createVNode(Comment))
         processCommentNode(null, placeholder, container!, anchor)
         initialVNode.placeholder = placeholder.el
@@ -1331,6 +1348,10 @@ function baseCreateRenderer(
   }
 
   const updateComponent = (n1: VNode, n2: VNode, optimized: boolean) => {
+    // 父组件重渲染时，子组件并不一定总要更新。
+    // 这里先做输入层面的 shouldUpdate 判断：
+    // - 需要更新：挂上 next vnode，然后触发实例自己的 render effect
+    // - 不需要更新：直接复用旧 el 与旧实例
     const instance = (n2.component = n1.component)!
     if (shouldUpdateComponent(n1, n2, optimized)) {
       if (
@@ -1372,7 +1393,16 @@ function baseCreateRenderer(
     namespace: ElementNamespace,
     optimized,
   ) => {
+    // 组件真正“进入响应式循环”的关键就在这里。
+    // 这里把组件渲染逻辑包装成 ReactiveEffect：
+    // - 首次执行时完成挂载
+    // - 之后依赖变化时，通过调度器批量触发更新
+    //
+    // 从底层看，组件更新本质上就是一个特殊 effect 的重复执行。
     const componentUpdateFn = () => {
+      // 这一份函数同时覆盖 mount 和 update 两条路径：
+      // - `instance.isMounted === false` 时执行首次渲染挂载
+      // - 否则执行组件更新 patch
       if (!instance.isMounted) {
         let vnodeHook: VNodeHook | null | undefined
         const { el, props } = initialVNode
@@ -1428,6 +1458,7 @@ function baseCreateRenderer(
             isAsyncWrapperVNode &&
             (type as ComponentOptions).__asyncHydrate
           ) {
+            // 异步组件可自定义 hydration 恢复时机，例如懒激活可见区组件。
             ;(type as ComponentOptions).__asyncHydrate!(
               el as Element,
               instance,
@@ -1439,6 +1470,7 @@ function baseCreateRenderer(
         } else {
           // custom element style injection
           if (root.ce && root.ce._hasShadowRoot()) {
+            // 自定义元素带 shadowRoot 时，子组件样式要在首次 patch 前先注入到宿主 CE 中。
             root.ce._injectChildStyle(
               type,
               instance.parent ? instance.parent.type : undefined,
@@ -1503,6 +1535,7 @@ function baseCreateRenderer(
             isAsyncWrapper(parent.vnode) &&
             parent.vnode.shapeFlag & ShapeFlags.COMPONENT_SHOULD_KEEP_ALIVE)
         ) {
+          // KeepAlive 根或异步包装父级挂着 KeepAlive 时，首次挂载后还要补发 activated。
           instance.a && queuePostRenderEffect(instance.a, parentSuspense)
           if (
             __COMPAT__ &&
@@ -1552,6 +1585,7 @@ function baseCreateRenderer(
         // This is triggered by mutation of component's own state (next: null)
         // OR parent calling processComponent (next: VNode)
         let originNext = next
+        // `originNext` 用来区分“父组件传入的新 vnode 更新”与“组件自身状态触发的自更新”。
         let vnodeHook: VNodeHook | null | undefined
         if (__DEV__) {
           pushWarningContext(next || instance.vnode)
@@ -1615,6 +1649,7 @@ function baseCreateRenderer(
           // self-triggered update. In case of HOC, update parent component
           // vnode el. HOC is indicated by parent instance's subTree pointing
           // to child component's vnode
+          // 自更新时父级没有新 vnode 壳子帮忙回填 el，HOC 场景要手动把宿主 el 往上传。
           updateHOCHostEl(instance, nextTree.el)
         }
         // updated hook
@@ -1657,6 +1692,7 @@ function baseCreateRenderer(
     const job: SchedulerJob = (instance.job = effect.runIfDirty.bind(effect))
     job.i = instance
     job.id = instance.uid
+    // 组件 effect 真正入调度器的是 `runIfDirty`，这样同一轮内可先由脏检查拦掉无效重跑。
     effect.scheduler = () => queueJob(job)
 
     // allowRecurse
@@ -2115,6 +2151,7 @@ function baseCreateRenderer(
             slotScopeIds,
             optimized,
           )
+          // 每成功复用一个旧节点，`patched` 就前进一格；到上限后剩余旧节点可直接删。
           patched++
         }
       }
@@ -2124,6 +2161,7 @@ function baseCreateRenderer(
       const increasingNewIndexSequence = moved
         ? getSequence(newIndexToOldIndexMap)
         : EMPTY_ARR
+      // 只有检测到乱序移动时才计算 LIS，避免本来就稳定的场景白做一遍 O(n log n)。
       j = increasingNewIndexSequence.length - 1
       // looping backwards so that we can use last patched node as anchor
       for (i = toBePatched - 1; i >= 0; i--) {
@@ -2174,6 +2212,7 @@ function baseCreateRenderer(
   ) => {
     const { el, type, transition, children, shapeFlag } = vnode
     if (shapeFlag & ShapeFlags.COMPONENT) {
+      // 组件移动本质上是移动其渲染子树根节点，而不是移动组件壳子对象本身。
       move(vnode.component!.subTree, container, anchor, moveType)
       return
     }
@@ -2184,11 +2223,13 @@ function baseCreateRenderer(
     }
 
     if (shapeFlag & ShapeFlags.TELEPORT) {
+      // Teleport 自己掌握目标容器与锚点语义，移动规则必须交还给它自己的实现。
       ;(type as typeof TeleportImpl).move(vnode, container, anchor, internals)
       return
     }
 
     if (type === Fragment) {
+      // Fragment 需要把开始锚点、所有子节点、结束锚点整段一起搬走。
       hostInsert(el!, container, anchor)
       for (let i = 0; i < (children as VNode[]).length; i++) {
         move((children as VNode[])[i], container, anchor, moveType)
@@ -2215,6 +2256,7 @@ function baseCreateRenderer(
         if (transition!.persisted && !el![leaveCbKey]) {
           hostInsert(el!, container, anchor)
         } else {
+          // 普通进入场景：先 beforeEnter，再插入 DOM，最后异步触发 enter。
           transition!.beforeEnter(el!)
           hostInsert(el!, container, anchor)
           queuePostRenderEffect(() => transition!.enter(el!), parentSuspense)
@@ -2241,6 +2283,7 @@ function baseCreateRenderer(
           if (transition!.persisted && !wasLeaving) {
             remove()
           } else {
+            // 离场动画完成后再真正挪/删节点，保证用户能看到完整 leave 过程。
             leave(el!, () => {
               remove()
               afterLeave && afterLeave()
@@ -2277,6 +2320,11 @@ function baseCreateRenderer(
       cacheIndex,
       memo,
     } = vnode
+    // unmount 不只是删除 DOM：
+    // - 还要处理 ref 清理
+    // - 指令卸载
+    // - 组件/KeepAlive/Teleport/Suspense 的专属销毁逻辑
+    // - 以及缓存节点、memo、动态子树等运行时状态的释放
 
     if (patchFlag === PatchFlags.BAIL) {
       optimized = false
@@ -2291,10 +2339,12 @@ function baseCreateRenderer(
 
     // #6593 should clean memo cache when unmount
     if (cacheIndex != null) {
+      // `v-memo` / block renderCache 里如果还保留着当前 vnode，卸载时要把缓存入口清空。
       parentComponent!.renderCache[cacheIndex] = undefined
     }
 
     if (shapeFlag & ShapeFlags.COMPONENT_SHOULD_KEEP_ALIVE) {
+      // KeepAlive 卸载不是物理销毁，而是先交给缓存容器做“失活”。
       ;(parentComponent!.ctx as KeepAliveContext).deactivate(vnode)
       return
     }
@@ -2314,6 +2364,7 @@ function baseCreateRenderer(
       unmountComponent(vnode.component!, parentSuspense, doRemove)
     } else {
       if (__FEATURE_SUSPENSE__ && shapeFlag & ShapeFlags.SUSPENSE) {
+        // Suspense 自己管理主分支 / fallback 分支与依赖队列，卸载必须交给边界对象统一处理。
         vnode.suspense!.unmount(parentSuspense, doRemove)
         return
       }
@@ -2343,6 +2394,7 @@ function baseCreateRenderer(
           (patchFlag > 0 && patchFlag & PatchFlags.STABLE_FRAGMENT))
       ) {
         // fast path for block nodes: only need to unmount dynamic children.
+        // block 优化下静态孩子可被整段跳过，动态孩子才是当前分支真正持有的可变资源。
         unmountChildren(
           dynamicChildren,
           parentComponent,
@@ -2376,6 +2428,7 @@ function baseCreateRenderer(
       shouldInvalidateMemo
     ) {
       queuePostRenderEffect(() => {
+        // unmounted/指令销毁钩子放到 post 阶段，确保真实 DOM 已完成删除或失活。
         vnodeHook && invokeVNodeHook(vnodeHook, parentComponent, vnode)
         shouldInvokeDirs &&
           invokeDirectiveHook(vnode, null, parentComponent, 'unmounted')
@@ -2398,6 +2451,7 @@ function baseCreateRenderer(
       ) {
         ;(vnode.children as VNode[]).forEach(child => {
           if (child.type === Comment) {
+            // dev root fragment 里的注释不是正常 fragment 边界的一部分，要单独删掉。
             hostRemove(child.el!)
           } else {
             remove(child)
@@ -2414,7 +2468,8 @@ function baseCreateRenderer(
       return
     }
 
-    const performRemove = () => {
+  const performRemove = () => {
+      // 真实删除动作统一收口到这里，方便和过渡 afterLeave 串起来。
       hostRemove(el!)
       if (transition && !transition.persisted && transition.afterLeave) {
         transition.afterLeave()
@@ -2429,6 +2484,7 @@ function baseCreateRenderer(
       const { leave, delayLeave } = transition
       const performLeave = () => leave(el!, performRemove)
       if (delayLeave) {
+        // 某些过渡需要先把节点暂存到别处或等待外部条件，再真正执行 leave。
         delayLeave(vnode.el!, performRemove, performLeave)
       } else {
         performLeave()
@@ -2441,6 +2497,7 @@ function baseCreateRenderer(
   const removeFragment = (cur: RendererNode, end: RendererNode) => {
     // For fragments, directly remove all contained DOM nodes.
     // (fragment child nodes cannot have transition)
+    // Fragment 本身没有单独宿主节点，只能按起止锚点把中间整段真实 DOM 全部删掉。
     let next
     while (cur !== end) {
       next = hostNextSibling(cur)!
@@ -2460,6 +2517,7 @@ function baseCreateRenderer(
     }
 
     const { bum, scope, job, subTree, um, m, a } = instance
+    // mount / activated 阶段尚未真正刷出的异步钩子要先失效，避免组件都卸了钩子还在队列里执行。
     invalidateMount(m)
     invalidateMount(a)
 
@@ -2476,6 +2534,7 @@ function baseCreateRenderer(
     }
 
     // stop effects in component scope
+    // 停掉 effect scope 后，setup/watch/computed 等副作用都会整体失活。
     scope.stop()
 
     // job may be null if a component is unmounted before its async
@@ -2483,6 +2542,7 @@ function baseCreateRenderer(
     if (job) {
       // so that scheduler will no longer invoke it
       job.flags! |= SchedulerJobFlags.DISPOSED
+      // 组件本体卸载后，再递归卸掉它渲染出来的 subTree。
       unmount(subTree, instance, parentSuspense, doRemove)
     }
     // unmounted hook
@@ -2515,6 +2575,7 @@ function baseCreateRenderer(
     optimized = false,
     start = 0,
   ) => {
+    // 子节点卸载就是简单顺序递归；是否删除真实 DOM 由上层 `doRemove` 决定。
     for (let i = start; i < children.length; i++) {
       unmount(children[i], parentComponent, parentSuspense, doRemove, optimized)
     }
@@ -2522,6 +2583,7 @@ function baseCreateRenderer(
 
   const getNextHostNode: NextFn = vnode => {
     if (vnode.shapeFlag & ShapeFlags.COMPONENT) {
+      // 组件本身没有独立宿主壳时，要继续下钻到它的渲染子树上找“下一个真实节点”。
       return getNextHostNode(vnode.component!.subTree)
     }
     if (__FEATURE_SUSPENSE__ && vnode.shapeFlag & ShapeFlags.SUSPENSE) {
@@ -2532,6 +2594,7 @@ function baseCreateRenderer(
     // teleported content can mess up nextSibling searches during patch so
     // we need to skip them during nextSibling search
     const teleportEnd = el && el[TeleportEndKey]
+    // Teleport 会把内容移出当前物理位置，普通 nextSibling 可能落到传送区内部，要跳过到真正尾后。
     return teleportEnd ? hostNextSibling(teleportEnd) : el
   }
 
@@ -2540,6 +2603,7 @@ function baseCreateRenderer(
     let instance
     if (vnode == null) {
       if (container._vnode) {
+        // `render(null, container)` 是渲染器层统一的整棵树卸载入口。
         unmount(container._vnode, null, null, true)
         instance = container._vnode.component
       }
@@ -2556,6 +2620,7 @@ function baseCreateRenderer(
     }
     container._vnode = vnode
     if (!isFlushing) {
+      // render 结束后统一冲刷 pre/post 队列，保证一次 render 调用的副作用时机完整闭环。
       isFlushing = true
       flushPreFlushCbs(instance)
       flushPostFlushCbs()

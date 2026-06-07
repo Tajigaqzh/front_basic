@@ -10,10 +10,8 @@ import {
   createStructuralDirectiveTransform,
   processIf,
 } from '@vue-source/compiler-dom'
-import {
-  type SSRTransformContext,
-  processChildrenAsStatement,
-} from '../ssrCodegenTransform'
+import { processChildrenAsStatement } from '../ssrTransformContext'
+import type { SSRTransformContext as SSRTransformContextType } from '../ssrTransformTypes'
 
 // Plugin for the first transform pass, which simply constructs the AST node
 export const ssrTransformIf: NodeTransform = createStructuralDirectiveTransform(
@@ -25,10 +23,12 @@ export const ssrTransformIf: NodeTransform = createStructuralDirectiveTransform(
 // codegen nodes.
 export function ssrProcessIf(
   node: IfNode,
-  context: SSRTransformContext,
+  context: SSRTransformContextType,
   disableNestedFragments = false,
   disableComment = false,
 ): void {
+  // SSR 第二阶段里，v-if 最终会变成真正的 JS if/else 语句，
+  // 而不是客户端那种条件 VNode 表达式。
   const [rootBranch] = node.branches
   const ifStatement = createIfStatement(
     rootBranch.condition!,
@@ -57,6 +57,7 @@ export function ssrProcessIf(
   }
 
   if (!currentIf.alternate && !disableComment) {
+    // SSR 分支为空时要输出注释占位，保证 hydrate 时节点对齐。
     currentIf.alternate = createBlockStatement([
       createCallExpression(`_push`, ['`<!---->`']),
     ])
@@ -65,7 +66,7 @@ export function ssrProcessIf(
 
 function processIfBranch(
   branch: IfBranchNode,
-  context: SSRTransformContext,
+  context: SSRTransformContextType,
   disableNestedFragments = false,
 ): BlockStatement {
   const { children } = branch
@@ -74,5 +75,6 @@ function processIfBranch(
     (children.length !== 1 || children[0].type !== NodeTypes.ELEMENT) &&
     // optimize away nested fragments when the only child is a ForNode
     !(children.length === 1 && children[0].type === NodeTypes.FOR)
+  // 分支里如果不是单个普通元素，SSR 也需要显式 fragment 边界来维持结构稳定。
   return processChildrenAsStatement(branch, context, needFragmentWrapper)
 }

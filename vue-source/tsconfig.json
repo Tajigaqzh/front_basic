@@ -29,7 +29,10 @@
     "packages/external-shims.d.ts"
   ],
   "exclude": [
+    "packages/*/dist/**/*",
     "packages/runtime-core/types/**/*",
+    "packages/*/src/**/*.d.ts",
+    "packages/*/src/**/*.d.ts.map",
     "packages/*/test/**/*",
     "packages/*/__tests__/**/*"
   ]

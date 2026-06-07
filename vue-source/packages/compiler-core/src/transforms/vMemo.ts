@@ -25,10 +25,13 @@ export const transformMemo: NodeTransform = (node, context) => {
         node.codegenNode ||
         (context.currentNode as PlainElementNode).codegenNode
       if (codegenNode && codegenNode.type === NodeTypes.VNODE_CALL) {
+        // v-memo 需要记住一组依赖值，相同时直接复用上次 vnode。
         // non-component sub tree should be turned into a block
         if (node.tagType !== ElementTypes.COMPONENT) {
           convertToBlock(codegenNode, context)
         }
+        // withMemo(memoDeps, renderSubTree, _cache, index)
+        // 运行时会比较 memoDeps，命中则返回缓存 vnode。
         node.codegenNode = createCallExpression(context.helper(WITH_MEMO), [
           dir.exp!,
           createFunctionExpression(undefined, codegenNode),

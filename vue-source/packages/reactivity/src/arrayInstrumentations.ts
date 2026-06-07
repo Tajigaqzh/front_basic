@@ -13,9 +13,11 @@ import { ARRAY_ITERATE_KEY, track } from './dep'
 import { isArray } from '@vue-source/shared'
 
 /**
- * Track array iteration and return:
- * - if input is reactive: a cloned raw array with reactive values
- * - if input is non-reactive or shallowReactive: the original raw array
+ * 数组读操作的公共入口之一。
+ *
+ * 这里会先把依赖收集到 ARRAY_ITERATE_KEY，再决定返回什么形态：
+ * - 如果传入的是深层 reactive 数组，返回“原始数组 + 元素 reactive 包装后的视图”
+ * - 如果是原始数组或 shallow 数组，则尽量直接复用原值
  */
 export function reactiveReadArray<T>(array: T[]): T[] {
   const raw = toRaw(array)
@@ -25,7 +27,7 @@ export function reactiveReadArray<T>(array: T[]): T[] {
 }
 
 /**
- * Track array iteration and return raw array
+ * shallow 场景下只需要收集迭代依赖，不需要把元素逐个转成 reactive。
  */
 export function shallowReadArray<T>(arr: T[]): T[] {
   track((arr = toRaw(arr)), TrackOpTypes.ITERATE, ARRAY_ITERATE_KEY)
@@ -229,7 +231,8 @@ export const arrayInstrumentations: Record<string | symbol, Function> = <any>{
   },
 }
 
-// instrument iterators to take ARRAY_ITERATE dependency
+// 迭代器方法需要显式接入 ARRAY_ITERATE_KEY。
+// 否则 `for...of`、`entries()`、`values()` 这类读取不会在数组结构变化时重新触发。
 function iterator(
   self: unknown[],
   method: keyof Array<unknown>,
@@ -265,8 +268,8 @@ function iterator(
 type ArrayMethods = keyof Array<any> | 'findLast' | 'findLastIndex'
 
 const arrayProto = Array.prototype
-// instrument functions that read (potentially) all items
-// to take ARRAY_ITERATE dependency
+// 这类数组方法可能读取全部元素，因此统一收集 ARRAY_ITERATE_KEY。
+// 同时还要处理 reactive 元素和原始元素之间的回调入参与返回值包装。
 function apply(
   self: unknown[],
   method: ArrayMethods,
@@ -305,7 +308,7 @@ function apply(
   return needsWrap && wrappedRetFn ? wrappedRetFn(result) : result
 }
 
-// instrument reduce and reduceRight to take ARRAY_ITERATE dependency
+// reduce/reduceRight 与 apply 类似，但还要额外处理累加器首值的包装语义。
 function reduce(
   self: unknown[],
   method: keyof Array<any>,
@@ -336,7 +339,8 @@ function reduce(
   return wrapInitialAccumulator ? toWrapped(self, result) : result
 }
 
-// instrument identity-sensitive methods to account for reactive proxies
+// includes/indexOf/lastIndexOf 对对象身份敏感。
+// 如果直接拿 reactive proxy 和 raw 值比较，可能找不到，所以失败后会再用 raw 重试。
 function searchProxy(
   self: unknown[],
   method: keyof Array<any>,
@@ -356,8 +360,8 @@ function searchProxy(
   return res
 }
 
-// instrument length-altering mutation methods to avoid length being tracked
-// which leads to infinite loops in some cases (#2137)
+// push/pop/splice 等会改 length。
+// 这里临时暂停追踪，避免 effect 在修改数组长度的同时又把自己订阅到 length 上，形成死循环。
 function noTracking(
   self: unknown[],
   method: keyof Array<any>,

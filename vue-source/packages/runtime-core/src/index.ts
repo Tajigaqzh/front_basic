@@ -113,18 +113,17 @@ export {
 
 // Advanced API ----------------------------------------------------------------
 
-// For getting a hold of the internal instance in setup() - useful for advanced
-// plugins
+// 暴露内部实例读取入口，主要给高级插件或极少数底层库使用。
 export { getCurrentInstance } from './component'
 export type { InternalRenderFunction } from './component'
 
-// For raw render function users
+// 手写 render/h 函数时最常用的入口。
 export { h } from './h'
-// Advanced render function utilities
+// 更底层的 vnode 构造/克隆/合并工具，主要服务编译产物和高级 render 场景。
 export { createVNode, cloneVNode, mergeProps, isVNode } from './vnode'
-// VNode types
+// 内置 vnode 类型常量，编译器和手写 render 都会依赖它们描述特殊节点。
 export { Fragment, Text, Comment, Static, type VNodeRef } from './vnode'
-// Built-in components
+// 内置组件本体，由 runtime-core 直接提供平台无关实现。
 export { Teleport, type TeleportProps } from './components/Teleport'
 export { Suspense, type SuspenseProps } from './components/Suspense'
 export { KeepAlive, type KeepAliveProps } from './components/KeepAlive'
@@ -133,9 +132,9 @@ export {
   BaseTransitionPropsValidators,
   type BaseTransitionProps,
 } from './components/BaseTransition'
-// For using custom directives
+// 运行时指令绑定入口，编译产物中的 `withDirectives()` 会直接调用这里。
 export { withDirectives } from './directives'
-// SSR context
+// SSR 渲染链路中跨组件共享上下文的入口。
 export { useSSRContext, ssrContextKey } from './helpers/useSsrContext'
 
 // Custom Renderer API ---------------------------------------------------------
@@ -367,8 +366,7 @@ export type { HMRRuntime } from './hmr'
 // **IMPORTANT** Internal APIs may change without notice between versions and
 // user code should avoid relying on them.
 
-// For compiler generated code
-// should sync with '@vue-source/compiler-core/src/runtimeHelpers.ts'
+// 这一组主要给编译产物使用，导出名需要和 compiler-core 里的 runtime helper 常量保持同步。
 export {
   withCtx,
   pushScopeId,
@@ -401,7 +399,7 @@ export {
   normalizeStyle,
 } from '@vue-source/shared'
 
-// For test-utils
+// 测试工具会借它模拟 vnode 参数变换流程。
 export { transformVNodeArgs } from './vnode'
 
 // SSR -------------------------------------------------------------------------
@@ -448,6 +446,7 @@ const _ssrUtils: {
  * SSR utils for \@vue/server-renderer. Only exposed in ssr-possible builds.
  * @internal
  */
+// server-renderer 会直接拿这组底层方法拼接 SSR 渲染流程，普通用户代码不应依赖。
 export const ssrUtils = (__SSR__ ? _ssrUtils : null) as typeof _ssrUtils
 
 // 2.x COMPAT ------------------------------------------------------------------
@@ -469,6 +468,7 @@ import { NOOP } from '@vue-source/shared'
 /**
  * @internal only exposed in compat builds
  */
+// compat 模式才需要运行时 filter 解析；标准 Vue 3 构建里它始终为 null。
 export const resolveFilter: typeof _resolveFilter | null = __COMPAT__
   ? _resolveFilter
   : null
@@ -490,10 +490,12 @@ const _compatUtils: {
 /**
  * @internal only exposed in compat builds.
  */
+// compatUtils 聚合了一组 Vue 2 兼容辅助函数，避免标准构建无谓携带兼容逻辑。
 export const compatUtils = (
   __COMPAT__ ? _compatUtils : null
 ) as typeof _compatUtils
 
+// 兼容告警枚举同样只在 compat 构建中暴露。
 export const DeprecationTypes = (
   __COMPAT__ ? _DeprecationTypes : null
 ) as typeof _DeprecationTypes

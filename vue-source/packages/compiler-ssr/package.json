@@ -17,6 +17,7 @@
     }
   },
   "dependencies": {
+    "@vue-source/compiler-core": "workspace:*",
     "@vue-source/shared": "workspace:*",
     "@vue-source/compiler-dom": "workspace:*"
   },

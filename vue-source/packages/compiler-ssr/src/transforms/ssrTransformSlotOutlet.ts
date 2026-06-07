@@ -13,9 +13,9 @@ import {
 } from '@vue-source/compiler-dom'
 import { SSR_RENDER_SLOT, SSR_RENDER_SLOT_INNER } from '../runtimeHelpers'
 import {
-  type SSRTransformContext,
   processChildrenAsStatement,
-} from '../ssrCodegenTransform'
+} from '../ssrTransformContext'
+import type { SSRTransformContext } from '../ssrTransformTypes'
 
 export const ssrTransformSlotOutlet: NodeTransform = (node, context) => {
   if (isSlotOutlet(node)) {
@@ -59,6 +59,8 @@ export const ssrTransformSlotOutlet: NodeTransform = (node, context) => {
         children.filter(c => c.type === NodeTypes.ELEMENT).length === 1
       ) {
         method = SSR_RENDER_SLOT_INNER
+        // Transition/TransitionGroup 内部的单个 slot 不能额外包 fragment，
+        // 否则运行时解包后的 vnode 结构会和期望不一致。
         if (!(context.scopeId && context.slotted !== false)) {
           args.push('null')
         }
@@ -78,6 +80,7 @@ export function ssrProcessSlotOutlet(
 
   // has fallback content
   if (node.children.length) {
+    // fallback slot 内容要延迟包装成函数，只有真正缺 slot 时才会执行。
     const fallbackRenderFn = createFunctionExpression([])
     fallbackRenderFn.body = processChildrenAsStatement(node, context)
     // _renderSlot(slots, name, props, fallback, ...)
@@ -86,6 +89,7 @@ export function ssrProcessSlotOutlet(
 
   // Forwarded <slot/>. Merge slot scope ids
   if (context.withSlotScopeId) {
+    // 转发 `<slot/>` 时，要把当前 slot scopeId 和上层的 `_scopeId` 继续拼起来传下去。
     const slotScopeId = renderCall.arguments[6]
     renderCall.arguments[6] = slotScopeId
       ? `${slotScopeId as string} + _scopeId`

@@ -11,12 +11,14 @@ export const transformOnce: NodeTransform = (node, context) => {
       return
     }
     seen.add(node)
+    // v-once 的核心语义：首次渲染后直接复用整棵子树，不再参与后续更新。
     context.inVOnce = true
     context.helper(SET_BLOCK_TRACKING)
     return () => {
       context.inVOnce = false
       const cur = context.currentNode as ElementNode | IfNode | ForNode
       if (cur.codegenNode) {
+        // 退出阶段包 cache，确保子树完整 codegen 完成后再整体缓存。
         cur.codegenNode = context.cache(
           cur.codegenNode,
           true /* isVNode */,

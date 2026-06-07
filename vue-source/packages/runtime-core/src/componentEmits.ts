@@ -43,6 +43,9 @@ export type ObjectEmitsOptions = Record<
   string,
   ((...args: any[]) => any) | null
 >
+// 对象写法的 emits 值要么是校验函数，要么是 null：
+// - 函数表示“声明事件 + 校验参数”
+// - null 表示“只声明事件名，不做参数校验”
 
 export type EmitsOptions = ObjectEmitsOptions | string[]
 
@@ -131,6 +134,20 @@ export function emit(
   event: string,
   ...rawArgs: any[]
 ): ComponentPublicInstance | null | undefined {
+  /**
+   * 触发组件自定义事件。
+   *
+   * 主要功能：
+   * - 校验事件是否在 `emits` 中声明
+   * - 处理 `update:xxx` 对应的 v-model 修饰符
+   * - 从组件 vnode props 中找到父组件传入的监听函数并执行
+   * - 支持 `Once` 监听器和兼容模式事件链路
+   *
+   * 参数：
+   * - `instance`：事件来源组件实例
+   * - `event`：事件名
+   * - `rawArgs`：事件参数
+   */
   if (instance.isUnmounted) return
   const props = instance.vnode.props || EMPTY_OBJ
 
@@ -149,6 +166,7 @@ export function emit(
         )
       ) {
         if (!propsOptions || !(toHandlerKey(camelize(event)) in propsOptions)) {
+          // 如果既没在 emits 声明，也没声明成 onXxx prop，说明父子事件契约很可能写错了。
           warn(
             `Component emitted event "${event}" but it is neither declared in ` +
               `the emits option nor as an "${toHandlerKey(camelize(event))}" prop.`,
@@ -157,6 +175,7 @@ export function emit(
       } else {
         const validator = emitsOptions[event]
         if (isFunction(validator)) {
+          // emits 对象里的函数不是监听器，而是“开发期参数校验器”。
           const isValid = validator(...rawArgs)
           if (!isValid) {
             warn(
@@ -168,6 +187,8 @@ export function emit(
     }
   }
 
+  // `args` 是最终真正传给父组件监听器的参数。
+  // 对于 v-model，它可能会先被 trim / number 修饰符改写。
   let args = rawArgs
   const isCompatModelListener =
     __COMPAT__ && compatModelEventPrefix + event in props
@@ -221,6 +242,7 @@ export function emit(
   }
 
   if (handler) {
+    // 普通监听器先执行一次；这里的 handler 可能来自原名、camelCase 或 kebab-case 的匹配结果。
     callWithAsyncErrorHandling(
       handler,
       instance,
@@ -232,6 +254,7 @@ export function emit(
   const onceHandler = props[handlerName + `Once`]
   if (onceHandler) {
     if (!instance.emitted) {
+      // `emitted` 记录 Once 监听器是否已经触发过，避免重复执行。
       instance.emitted = {}
     } else if (instance.emitted[handlerName]) {
       return
@@ -246,6 +269,7 @@ export function emit(
   }
 
   if (__COMPAT__) {
+    // compat 下还要桥接 Vue 2 的 v-model 事件与实例事件系统。
     compatModelEmit(instance, event, args)
     return compatInstanceEmit(instance, event, args)
   }
@@ -262,8 +286,22 @@ export function normalizeEmitsOptions(
   appContext: AppContext,
   asMixin = false,
 ): ObjectEmitsOptions | null {
+  /**
+   * 归一化组件 `emits` 选项。
+   *
+   * 主要功能：
+   * - 把数组写法转成对象写法
+   * - 合并全局 mixins / extends / 本地 mixins 带来的 emits
+   * - 缓存归一化结果，避免重复解析
+   *
+   * 参数：
+   * - `comp`：组件类型
+   * - `appContext`：当前应用上下文，里面保存 emits 归一化缓存
+   * - `asMixin`：当前是否在 mixin 合并链路里
+   */
   const cache =
     __FEATURE_OPTIONS_API__ && asMixin ? mixinEmitsCache : appContext.emitsCache
+  // mixin 合并链与正常组件实例化链分开缓存，避免不同语义阶段互相污染。
   const cached = cache.get(comp)
   if (cached !== undefined) {
     return cached
@@ -276,6 +314,7 @@ export function normalizeEmitsOptions(
   let hasExtends = false
   if (__FEATURE_OPTIONS_API__ && !isFunction(comp)) {
     const extendEmits = (raw: ComponentOptions) => {
+      // mixin / extends 也可能继续嵌套 extends，因此直接递归复用 normalize 流程。
       const normalizedFromExtend = normalizeEmitsOptions(raw, appContext, true)
       if (normalizedFromExtend) {
         hasExtends = true
@@ -295,18 +334,21 @@ export function normalizeEmitsOptions(
 
   if (!raw && !hasExtends) {
     if (isObject(comp)) {
+      // 明确缓存 null，表示这个组件确实没有 emits，后续可直接跳过解析。
       cache.set(comp, null)
     }
     return null
   }
 
   if (isArray(raw)) {
+    // 数组写法只表达“声明了这些事件”，统一归一化成 `{ eventName: null }` 结构。
     raw.forEach(key => (normalized[key] = null))
   } else {
     extend(normalized, raw)
   }
 
   if (isObject(comp)) {
+    // 只给对象组件缓存；函数组件/其他情况可能没有稳定对象可作为 WeakMap key。
     cache.set(comp, normalized)
   }
   return normalized
@@ -319,6 +361,17 @@ export function isEmitListener(
   options: ObjectEmitsOptions | null,
   key: string,
 ): boolean {
+  /**
+   * 判断一个 prop key 是否其实是“组件事件监听器”。
+   *
+   * 典型例子：
+   * - `onClick`
+   * - `onUpdate:modelValue`
+   * - `onSubmitOnce`
+   *
+   * 这个判断会被 props 解析和更新逻辑复用，
+   * 用来避免把监听器错误地当成普通 props / attrs。
+   */
   if (!options || !isOn(key)) {
     return false
   }
@@ -328,6 +381,10 @@ export function isEmitListener(
   }
 
   key = key.slice(2).replace(/Once$/, '')
+  // 同一个监听器要兼容三种可能的命名形式：
+  // - 原样
+  // - 首字母小写
+  // - kebab-case
   return (
     hasOwn(options, key[0].toLowerCase() + key.slice(1)) ||
     hasOwn(options, hyphenate(key)) ||

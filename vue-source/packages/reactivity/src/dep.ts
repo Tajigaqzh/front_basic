@@ -12,22 +12,23 @@ import {
 } from './effect'
 
 /**
- * Incremented every time a reactive change happens
- * This is used to give computed a fast path to avoid re-compute when nothing
- * has changed.
+ * 每发生一次响应式写操作就递增一次。
+ * computed 会记住自己上次刷新的 globalVersion；
+ * 如果版本没变，说明期间没有任何响应式写入，可以直接跳过重算。
  */
 export let globalVersion = 0
 
 /**
- * Represents a link between a source (Dep) and a subscriber (Effect or Computed).
- * Deps and subs have a many-to-many relationship - each link between a
- * dep and a sub is represented by a Link instance.
+ * Link 是 dep 和 subscriber 之间的一条双向连接记录。
  *
- * A Link is also a node in two doubly-linked lists - one for the associated
- * sub to track all its deps, and one for the associated dep to track all its
- * subs.
+ * 为什么不用简单 Set：
+ * - effect 需要知道“我依赖了哪些 dep”，用于重新运行后的旧依赖清理
+ * - dep 也需要知道“有哪些 subscriber 订阅了我”，用于 trigger 时通知
  *
- * @internal
+ * 所以 Vue 这里用双向链表节点把两侧串起来，兼顾：
+ * - 依赖收集
+ * - 依赖清理
+ * - 低额外分配和较快删除
  */
 export class Link {
   /**
@@ -67,7 +68,8 @@ export class Link {
 export class Dep {
   version = 0
   /**
-   * Link between this dep and the current active effect
+   * 当前正在收集依赖的 subscriber 对应的 Link。
+   * 一个 dep 在一次 effect/computed 求值期间，可能会复用上轮的 link。
    */
   activeLink?: Link = undefined
 
@@ -106,6 +108,8 @@ export class Dep {
   }
 
   track(debugInfo?: DebuggerEventExtraInfo): Link | undefined {
+    // track 只在“当前有 activeSub 且允许追踪”时生效。
+    // 这也是为什么只有 effect / computed / watch 的执行上下文里，读取才会建立依赖。
     if (!activeSub || !shouldTrack || activeSub === this.computed) {
       return
     }
@@ -114,7 +118,7 @@ export class Dep {
     if (link === undefined || link.sub !== activeSub) {
       link = this.activeLink = new Link(activeSub, this)
 
-      // add the link to the activeEffect as a dep (as tail)
+      // 新建 Link 后，既要挂到 activeSub.deps 链上，也要挂到 dep.subs 链上。
       if (!activeSub.deps) {
         activeSub.deps = activeSub.depsTail = link
       } else {
@@ -165,12 +169,16 @@ export class Dep {
   }
 
   trigger(debugInfo?: DebuggerEventExtraInfo): void {
+    // dep 版本变化代表“这个依赖源对应的值语义上已经变了”。
+    // 后续所有订阅者都会基于 version 差异判断自己是否 dirty。
     this.version++
     globalVersion++
     this.notify(debugInfo)
   }
 
   notify(debugInfo?: DebuggerEventExtraInfo): void {
+    // notify 只负责分发通知，不直接同步执行所有 effect。
+    // 真正执行交给 batch 统一调度，避免一轮修改里重复触发。
     startBatch()
     try {
       if (__DEV__) {
@@ -205,6 +213,8 @@ export class Dep {
 }
 
 function addSub(link: Link) {
+  // 当 dep 第一次拥有 computed 订阅者时，需要把 computed 自己重新接回上游依赖，
+  // 这样它才能从“懒值”切换成真正参与依赖传播的中间节点。
   link.dep.sc++
   if (link.sub.flags & EffectFlags.TRACKING) {
     const computed = link.dep.computed
@@ -231,10 +241,14 @@ function addSub(link: Link) {
   }
 }
 
-// The main WeakMap that stores {target -> key -> dep} connections.
-// Conceptually, it's easier to think of a dependency as a Dep class
-// which maintains a Set of subscribers, but we simply store them as
-// raw Maps to reduce memory overhead.
+// targetMap 是响应式对象的总依赖表。
+// 可以把它理解成：
+// targetMap: WeakMap<
+//   target,
+//   Map<key, Dep>
+// >
+//
+// 也就是先按“对象”定位，再按“属性 key / 迭代 key”定位，最后拿到该位置对应的 Dep。
 type KeyToDepMap = Map<any, Dep>
 
 export const targetMap: WeakMap<object, KeyToDepMap> = new WeakMap()
@@ -260,6 +274,8 @@ export const ARRAY_ITERATE_KEY: unique symbol = Symbol(
  * @param key - Identifier of the reactive property to track.
  */
 export function track(target: object, type: TrackOpTypes, key: unknown): void {
+  // track 是对象级入口，负责把 target/key 定位到具体 Dep。
+  // 真正把 activeSub 挂进去的是 dep.track()。
   if (shouldTrack && activeSub) {
     let depsMap = targetMap.get(target)
     if (!depsMap) {
@@ -299,6 +315,11 @@ export function trigger(
   oldValue?: unknown,
   oldTarget?: Map<unknown, unknown> | Set<unknown>,
 ): void {
+  // trigger 的关键不是“把所有 effect 全跑一遍”，
+  // 而是根据操作类型精确找到需要失效的 dep：
+  // - 普通属性 set 只影响该 key
+  // - 数组 length 还会影响越界索引和迭代
+  // - Map/Set 的 add/delete/clear 还会影响迭代相关依赖
   const depsMap = targetMap.get(target)
   if (!depsMap) {
     // never been tracked

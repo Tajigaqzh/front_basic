@@ -323,6 +323,18 @@ export function defineComponent(
   options: unknown,
   extraOptions?: ComponentOptions,
 ) {
+  /**
+   * `defineComponent` 的运行时实现。
+   *
+   * 运行时层面它非常薄，主要职责只有两件事：
+   * - 传入的是 `setup` 函数时，把它和附加选项包装成标准组件对象
+   * - 传入的是组件选项对象时，原样返回
+   *
+   * 真正复杂的部分主要发生在类型系统里：
+   * - props 推导
+   * - emits 推导
+   * - this / slots / expose / refs 等实例类型拼装
+   */
   // 运行时实现非常薄：
   // - 直接传 setup 函数时，需要和附加选项合并成标准组件对象
   // - 传对象时原样返回

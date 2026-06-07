@@ -8,10 +8,8 @@ import {
   createStructuralDirectiveTransform,
   processFor,
 } from '@vue-source/compiler-dom'
-import {
-  type SSRTransformContext,
-  processChildrenAsStatement,
-} from '../ssrCodegenTransform'
+import { processChildrenAsStatement } from '../ssrTransformContext'
+import type { SSRTransformContext as SSRTransformContextType } from '../ssrTransformTypes'
 import { SSR_RENDER_LIST } from '../runtimeHelpers'
 
 // Plugin for the first transform pass, which simply constructs the AST node
@@ -22,9 +20,11 @@ export const ssrTransformFor: NodeTransform =
 // codegen nodes.
 export function ssrProcessFor(
   node: ForNode,
-  context: SSRTransformContext,
+  context: SSRTransformContextType,
   disableNestedFragments = false,
 ): void {
+  // SSR 的 v-for 不是生成 renderList vnode 调用结果，而是生成
+  // `_ssrRenderList(source, (item, i) => { ..._push(...) })` 这种结构。
   const needFragmentWrapper =
     !disableNestedFragments &&
     (node.children.length !== 1 || node.children[0].type !== NodeTypes.ELEMENT)
@@ -38,6 +38,7 @@ export function ssrProcessFor(
   )
   // v-for always renders a fragment unless explicitly disabled
   if (!disableNestedFragments) {
+    // SSR fragment 边界同样靠注释占位，供 hydrate 精确对齐。
     context.pushStringPart(`<!--[-->`)
   }
   context.pushStatement(

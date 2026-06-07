@@ -1,6 +1,7 @@
 .DS_Store
 
 .idea/
+**/.idea/
 
 node_modules/
 **/node_modules/
@@ -9,6 +10,7 @@ dist/
 **/dist/
 
 docs/.vitepress/dist/
+docs/.vitepress/cache/
 
 coverage/
 *.log

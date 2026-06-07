@@ -44,6 +44,25 @@ export function setRef(
   vnode: VNode,
   isUnmount = false,
 ): void {
+  /**
+   * 同步模板 ref。
+   *
+   * 主要功能：
+   * - 挂载时把元素或组件公开实例写到目标 ref
+   * - 更新时处理动态 ref 切换
+   * - 卸载时把旧 ref 清空
+   * - `ref_for` 场景下维护 ref 数组
+   *
+   * 参数：
+   * - `rawRef`：当前 vnode 上的新 ref 描述
+   * - `oldRawRef`：旧 vnode 上的 ref 描述
+   * - `parentSuspense`：所属 Suspense 边界，post render 阶段调度时需要它
+   * - `vnode`：当前 vnode
+   * - `isUnmount`：是否处于卸载阶段
+   *
+   * 所在链路：
+   * - `renderer.ts` 在 mount / patch / unmount 收尾阶段都会调用这里
+   */
   if (isArray(rawRef)) {
     // 一个 vnode 可以声明多个 ref，逐个递归处理即可。
     rawRef.forEach((r, i) =>
@@ -72,6 +91,7 @@ export function setRef(
   }
 
   // 组件 ref 暴露组件公开实例，元素 ref 暴露真实 DOM 节点。
+  // 元素节点暴露真实 DOM，组件节点暴露组件公开实例。
   const refValue =
     vnode.shapeFlag & ShapeFlags.STATEFUL_COMPONENT
       ? getComponentPublicInstance(vnode.component!)
@@ -154,9 +174,11 @@ export function setRef(
 
     if (_isString || _isRef) {
       // `doSet` 聚合了字符串 ref、ref 对象 ref、多 ref 三种写入路径。
+      // `doSet` 统一承接所有 ref 目标写入逻辑，外层只决定是立即执行还是延后到 post render。
       const doSet = () => {
         if (rawRef.f) {
           // `f` 表示这是 `ref_for` 场景，同一个 ref key 对应一个数组。
+          // `existing` 表示 ref_for 当前已经收集到的值，可能是 setupState 上的，也可能是 refs 容器里的。
           const existing = _isString
             ? canSetSetupRef(ref)
               ? setupState[ref]
@@ -165,23 +187,25 @@ export function setRef(
               ? ref.value
               : refs[rawRef.k]
           if (isUnmount) {
+            // 卸载时把当前节点/实例从 ref 数组里移除即可。
             isArray(existing) && remove(existing, refValue)
           } else {
             if (!isArray(existing)) {
               if (_isString) {
                 refs[ref] = [refValue]
-              if (canSetSetupRef(ref)) {
-                setupState[ref] = refs[ref]
-              }
-            } else {
-              // ref 对象在 `ref_for` 场景下也要改成数组。
-              const newVal = [refValue]
+                if (canSetSetupRef(ref)) {
+                  setupState[ref] = refs[ref]
+                }
+              } else {
+                // ref 对象在 `ref_for` 场景下也要改成数组。
+                const newVal = [refValue]
                 if (canSetRef(ref, rawRef.k)) {
                   ref.value = newVal
                 }
                 if (rawRef.k) refs[rawRef.k] = newVal
               }
             } else if (!existing.includes(refValue)) {
+              // 同一个 ref_for 数组里避免重复收集同一真实节点/实例。
               existing.push(refValue)
             }
           }
@@ -203,6 +227,8 @@ export function setRef(
       }
       if (value) {
         // 非空 ref 要等本轮渲染提交后再赋值，保证拿到的是最终 DOM / 子组件实例。
+        // 模板 ref 必须等本轮 DOM / 子组件实例真正提交后再写入，
+        // 否则用户在 mounted / updated 里拿到的可能还是旧节点。
         const job: SchedulerJob = () => {
           doSet()
           pendingSetRefMap.delete(rawRef)

@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./src",
+    "rootDir": "..",
     "outDir": "./dist",
     "declaration": true,
     "declarationMap": true,
@@ -15,5 +15,5 @@
     }
   },
   "include": ["src/**/*.ts", "../global.d.ts", "../external-shims.d.ts"],
-  "exclude": ["dist", "../*/dist", "../*/*.d.ts", "../*/*.d.ts.map"]
+  "exclude": ["dist", "../*/dist", "../*/*.d.ts", "../*/*.d.ts.map", "__tests__"]
 }

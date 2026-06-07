@@ -21,12 +21,14 @@ import type { Node as BabelNode } from '@babel/types'
 export type Namespace = number
 
 export enum Namespaces {
+  // 当前 compiler-core 内建支持的命名空间。
   HTML,
   SVG,
   MATH_ML,
 }
 
 export enum NodeTypes {
+  // 模板 AST 节点
   ROOT,
   ELEMENT,
   TEXT,
@@ -35,13 +37,13 @@ export enum NodeTypes {
   INTERPOLATION,
   ATTRIBUTE,
   DIRECTIVE,
-  // containers
+  // 容器型节点：不会直接对应单一运行时 vnode，而是承载一段结构。
   COMPOUND_EXPRESSION,
   IF,
   IF_BRANCH,
   FOR,
   TEXT_CALL,
-  // codegen
+  // codegen 专用 JS AST 节点
   VNODE_CALL,
   JS_CALL_EXPRESSION,
   JS_OBJECT_EXPRESSION,
@@ -51,7 +53,7 @@ export enum NodeTypes {
   JS_CONDITIONAL_EXPRESSION,
   JS_CACHE_EXPRESSION,
 
-  // ssr codegen
+  // SSR codegen 专用节点
   JS_BLOCK_STATEMENT,
   JS_TEMPLATE_LITERAL,
   JS_IF_STATEMENT,
@@ -61,6 +63,7 @@ export enum NodeTypes {
 }
 
 export enum ElementTypes {
+  // parser 在闭合标签阶段会把普通元素进一步细分成这几类。
   ELEMENT,
   COMPONENT,
   SLOT,
@@ -105,6 +108,7 @@ export interface RootNode extends Node {
   type: NodeTypes.ROOT
   source: string
   children: TemplateChildNode[]
+  // 这些字段由 transform 阶段回填，供 codegen 直接使用。
   helpers: Set<symbol>
   components: string[]
   directives: string[]
@@ -131,6 +135,7 @@ export interface BaseElementNode extends Node {
   ns: Namespace
   tag: string
   tagType: ElementTypes
+  // props 同时容纳普通 attribute 和 directive，后续 transform 再分流处理。
   props: Array<AttributeNode | DirectiveNode>
   children: TemplateChildNode[]
   isSelfClosing?: boolean
@@ -216,6 +221,7 @@ export interface DirectiveNode extends Node {
  * can always be hoisted and skipped for patch.
  */
 export enum ConstantTypes {
+  // 常量等级越高，说明表达式越稳定，可做的优化越激进。
   NOT_CONSTANT = 0,
   CAN_SKIP_PATCH,
   CAN_CACHE,
@@ -292,6 +298,7 @@ export interface IfBranchNode extends Node {
 
 export interface ForNode extends Node {
   type: NodeTypes.FOR
+  // source/valueAlias/keyAlias/indexAlias 对应 `item, key, index in list` 的拆解结果。
   source: ExpressionNode
   valueAlias: ExpressionNode | undefined
   keyAlias: ExpressionNode | undefined
@@ -322,6 +329,7 @@ export type TemplateTextChildNode =
 
 export interface VNodeCall extends Node {
   type: NodeTypes.VNODE_CALL
+  // 这是 codegen 阶段最核心的节点：最终几乎都会落成 createVNode/createBlock 调用。
   tag: string | symbol | CallExpression
   props: PropsExpression | undefined
   children:
@@ -415,6 +423,7 @@ export interface ConditionalExpression extends Node {
 
 export interface CacheExpression extends Node {
   type: NodeTypes.JS_CACHE_EXPRESSION
+  // `_cache[index]` 的抽象表示，可用于 handler cache、v-once、静态缓存等场景。
   index: number
   value: JSChildNode
   needPauseTracking: boolean
@@ -490,6 +499,7 @@ export interface DirectiveArgumentNode extends ArrayExpression {
 
 // renderSlot(...)
 export interface RenderSlotCall extends CallExpression {
+  // `<slot/>` 会编译成 renderSlot(...) 调用。
   callee: typeof RENDER_SLOT
   arguments: // $slots, name, props, fallback
     | [string, string | ExpressionNode]
@@ -506,6 +516,7 @@ export type SlotsExpression = SlotsObjectExpression | DynamicSlotsExpression
 
 // { foo: () => [...] }
 export interface SlotsObjectExpression extends ObjectExpression {
+  // 组件 slots 对象的静态部分，例如 `{ default: () => [...] }`。
   properties: SlotsObjectProperty[]
 }
 
@@ -522,6 +533,7 @@ export interface SlotFunctionExpression extends FunctionExpression {
 //    renderList(list, i => () => [i])
 // ])
 export interface DynamicSlotsExpression extends CallExpression {
+  // 动态 slots 会被包装成 createSlots(staticSlots, dynamicEntries)。
   callee: typeof CREATE_SLOTS
   arguments: [SlotsObjectExpression, DynamicSlotEntries]
 }
@@ -583,6 +595,7 @@ export interface ForIteratorExpression extends FunctionExpression {
 // associated with template nodes, so their source locations are just a stub.
 // Container types like CompoundExpression also don't need a real location.
 export const locStub: SourceLocation = {
+  // 某些纯 codegen 节点并不直接对应模板源码位置，因此用占位 loc。
   start: { line: 1, column: 1, offset: 0 },
   end: { line: 1, column: 1, offset: 0 },
   source: '',
@@ -592,6 +605,7 @@ export function createRoot(
   children: TemplateChildNode[],
   source = '',
 ): RootNode {
+  // parser 创建根节点的统一入口。
   return {
     type: NodeTypes.ROOT,
     source,
@@ -621,6 +635,7 @@ export function createVNodeCall(
   isComponent: VNodeCall['isComponent'] = false,
   loc: SourceLocation = locStub,
 ): VNodeCall {
+  // 所有元素/组件/Fragment 最终都会落成 VNodeCall，供 codegen 输出运行时代码。
   if (context) {
     if (isBlock) {
       context.helper(OPEN_BLOCK)
@@ -674,6 +689,7 @@ export function createObjectProperty(
   key: Property['key'] | string,
   value: Property['value'],
 ): Property {
+  // 允许直接传字符串 key，内部统一转成静态 SimpleExpression。
   return {
     type: NodeTypes.JS_PROPERTY,
     loc: locStub,
@@ -688,6 +704,7 @@ export function createSimpleExpression(
   loc: SourceLocation = locStub,
   constType: ConstantTypes = ConstantTypes.NOT_CONSTANT,
 ): SimpleExpressionNode {
+  // 最常用的表达式节点工厂：文本、属性名、简单 JS 表达式都会走这里。
   return {
     type: NodeTypes.SIMPLE_EXPRESSION,
     loc,
@@ -714,6 +731,7 @@ export function createCompoundExpression(
   children: CompoundExpressionNode['children'],
   loc: SourceLocation = locStub,
 ): CompoundExpressionNode {
+  // 复合表达式本质是“字符串片段 + 子表达式节点”的数组。
   return {
     type: NodeTypes.COMPOUND_EXPRESSION,
     loc,
@@ -745,6 +763,7 @@ export function createFunctionExpression(
   isSlot: boolean = false,
   loc: SourceLocation = locStub,
 ): FunctionExpression {
+  // slot、renderList 回调、withMemo 工厂函数都用这种节点表示。
   return {
     type: NodeTypes.JS_FUNCTION_EXPRESSION,
     params,
@@ -777,6 +796,7 @@ export function createCacheExpression(
   needPauseTracking: boolean = false,
   inVOnce: boolean = false,
 ): CacheExpression {
+  // 抽象表示 `_cache[index]` 关联的一段可复用结果。
   return {
     type: NodeTypes.JS_CACHE_EXPRESSION,
     index,

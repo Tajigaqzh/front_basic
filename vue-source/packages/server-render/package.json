@@ -1,9 +1,0 @@
-{
-  "name": "@vue-source/server-render",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "echo \"@vue-source/server-render has no build script yet.\""
-  }
-}

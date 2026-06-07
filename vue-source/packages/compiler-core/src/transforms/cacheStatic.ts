@@ -38,6 +38,7 @@ import {
 } from '../runtimeHelpers'
 
 export function cacheStatic(root: RootNode, context: TransformContext): void {
+  // 静态提升入口：从根节点向下扫描，找出可以 hoist / cache 的子树和 props。
   walk(
     root,
     undefined,
@@ -51,6 +52,7 @@ export function cacheStatic(root: RootNode, context: TransformContext): void {
 export function getSingleElementRoot(
   root: RootNode,
 ): PlainElementNode | ComponentNode | TemplateNode | null {
+  // 单根元素是一个特殊场景：根节点自身不能随意 hoist，但它的内部子树仍可继续分析。
   const children = root.children.filter(x => x.type !== NodeTypes.COMMENT)
   return children.length === 1 &&
     children[0].type === NodeTypes.ELEMENT &&
@@ -66,6 +68,8 @@ function walk(
   doNotHoistNode: boolean = false,
   inFor = false,
 ) {
+  // 递归扫描当前父节点的 children，决定哪些节点可以缓存成 `_cache[n]`
+  // 或提升成 `_hoisted_n`。
   const { children } = node
   const toCache: (PlainElementNode | TextCallNode)[] = []
   for (let i = 0; i < children.length; i++) {
@@ -80,11 +84,13 @@ function walk(
         : getConstantType(child, context)
       if (constantType > ConstantTypes.NOT_CONSTANT) {
         if (constantType >= ConstantTypes.CAN_CACHE) {
+          // 整个元素子树足够稳定时，直接标成 CACHED，后面包进 cache 表达式。
           ;(child.codegenNode as VNodeCall).patchFlag = PatchFlags.CACHED
           toCache.push(child)
           continue
         }
       } else {
+        // 整个节点不能缓存时，仍然尝试把静态 props 或 dynamicProps 单独提升。
         // node may contain dynamic children, but its props may be eligible for
         // hoisting.
         const codegenNode = child.codegenNode!
@@ -112,6 +118,7 @@ function walk(
         ? ConstantTypes.NOT_CONSTANT
         : getConstantType(child, context)
       if (constantType >= ConstantTypes.CAN_CACHE) {
+        // 文本 vnode 也可以缓存，命中后跳过重复创建。
         if (
           child.codegenNode.type === NodeTypes.JS_CALL_EXPRESSION &&
           child.codegenNode.arguments.length > 0
@@ -130,6 +137,7 @@ function walk(
     if (child.type === NodeTypes.ELEMENT) {
       const isComponent = child.tagType === ElementTypes.COMPONENT
       if (isComponent) {
+        // 组件子树默认把 slot 作用域层级 +1，避免错误 hoist 依赖 slot 变量的内容。
         context.scopes.vSlot++
       }
       walk(child, node, context, false, inFor)
@@ -137,9 +145,11 @@ function walk(
         context.scopes.vSlot--
       }
     } else if (child.type === NodeTypes.FOR) {
+      // v-for 的单子节点必须保持 block 语义，不能直接整体 hoist。
       // Do not hoist v-for single child because it has to be a block
       walk(child, node, context, child.children.length === 1, true)
     } else if (child.type === NodeTypes.IF) {
+      // v-if 分支同理，单子节点也不能破坏 block 结构。
       for (let i = 0; i < child.branches.length; i++) {
         // Do not hoist v-if single child because it has to be a block
         walk(
@@ -161,6 +171,7 @@ function walk(
       node.codegenNode.type === NodeTypes.VNODE_CALL &&
       isArray(node.codegenNode.children)
     ) {
+      // 如果整组 children 都是可缓存的，直接缓存整个 children 数组更划算。
       // all children were hoisted - the entire children array is cacheable.
       node.codegenNode.children = getCacheExpression(
         createArrayExpression(node.codegenNode.children),
@@ -174,6 +185,7 @@ function walk(
       !isArray(node.codegenNode.children) &&
       node.codegenNode.children.type === NodeTypes.JS_OBJECT_EXPRESSION
     ) {
+      // 组件默认插槽返回值也可以整体缓存成数组。
       // default slot
       const slot = getSlotNode(node.codegenNode, 'default')
       if (slot) {
@@ -193,6 +205,7 @@ function walk(
       !isArray(parent.codegenNode.children) &&
       parent.codegenNode.children.type === NodeTypes.JS_OBJECT_EXPRESSION
     ) {
+      // 命名 `<template #foo>` 插槽同样可以整体缓存返回数组。
       // named <template> slot
       const slotName = findDir(node, 'slot', true)
       const slot =
@@ -209,6 +222,7 @@ function walk(
   }
 
   if (!cachedAsArray) {
+    // 否则退化为逐个节点缓存。
     for (const child of toCache) {
       child.codegenNode = context.cache(child.codegenNode!)
     }
@@ -225,6 +239,7 @@ function walk(
     // which bind DOM elements. These DOM references persist after unmount,
     // preventing garbage collection. Array spread avoids mutating cached
     // array, preventing memory leaks.
+    // 这里强制数组展开，避免缓存数组被 mount 过程原地改写带来 HMR/泄漏问题。
     exp.needArraySpread = true
     return exp
   }
@@ -254,6 +269,7 @@ export function getConstantType(
   node: TemplateChildNode | SimpleExpressionNode | CacheExpression,
   context: TransformContext,
 ): ConstantTypes {
+  // 常量性分析核心：判断某个节点能否被 stringify / cache / hoist。
   const { constantCache } = context
   switch (node.type) {
     case NodeTypes.ELEMENT:
@@ -274,6 +290,7 @@ export function getConstantType(
         node.tag !== 'foreignObject' &&
         node.tag !== 'math'
       ) {
+        // 一般 block 代表内部有动态更新边界，因此默认不可静态提升。
         return ConstantTypes.NOT_CONSTANT
       }
       if (codegenNode.patchFlag === undefined) {
@@ -330,6 +347,7 @@ export function getConstantType(
         // static then they don't need to be blocks since there will be no
         // nested updates.
         if (codegenNode.isBlock) {
+          // 如果整个节点最终被判定为静态，就可以把 block 降级回普通 vnode。
           // except set custom directives.
           for (let i = 0; i < node.props.length; i++) {
             const p = node.props[i]
@@ -422,6 +440,7 @@ function getGeneratedPropsConstantType(
   node: PlainElementNode,
   context: TransformContext,
 ): ConstantTypes {
+  // 单独分析编译器生成的 props 对象常量性，决定 props 是否能被提升。
   let returnType = ConstantTypes.CAN_STRINGIFY
   const props = getNodeProps(node)
   if (props && props.type === NodeTypes.JS_OBJECT_EXPRESSION) {

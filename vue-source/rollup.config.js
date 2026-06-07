@@ -43,6 +43,14 @@ const outputMap = {
     file: resolvePackagePath(`dist/${packageName}.esm.js`),
     format: 'es',
   },
+  'esm-bundler': {
+    file: resolvePackagePath(`dist/${packageName}.esm-bundler.js`),
+    format: 'es',
+  },
+  'esm-browser': {
+    file: resolvePackagePath(`dist/${packageName}.esm-browser.js`),
+    format: 'es',
+  },
   'esm-prod': {
     file: resolvePackagePath(`dist/${packageName}.esm.prod.js`),
     format: 'es',

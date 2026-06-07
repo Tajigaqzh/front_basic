@@ -42,10 +42,10 @@ import {
 } from '@vue-source/compiler-dom'
 import { SSR_RENDER_COMPONENT, SSR_RENDER_VNODE } from '../runtimeHelpers'
 import {
-  type SSRTransformContext,
   processChildren,
   processChildrenAsStatement,
-} from '../ssrCodegenTransform'
+} from '../ssrTransformContext'
+import type { SSRTransformContext } from '../ssrTransformTypes'
 import { ssrProcessTeleport } from './ssrTransformTeleport'
 import {
   ssrProcessSuspense,
@@ -102,6 +102,8 @@ export const ssrTransformComponent: NodeTransform = (node, context) => {
   componentTypeMap.set(node, component)
 
   if (isSymbol(component)) {
+    // 部分内置组件在 SSR 下有完全独立的处理器，
+    // 例如 Suspense / TransitionGroup / Transition / Teleport。
     if (component === SUSPENSE) {
       return ssrTransformSuspense(node, context)
     } else if (component === TRANSITION_GROUP) {
@@ -125,6 +127,8 @@ export const ssrTransformComponent: NodeTransform = (node, context) => {
     // Using the cloned node, build the normal VNode-based branches (for
     // fallback in case the child is render-fn based). Store them in an array
     // for later use.
+    // 这里故意保留一套“普通 vnode slot 分支”，因为某些组件最终消费 slot 的方式
+    // 仍可能退回到 vnode 运行时逻辑，而不是纯 SSR `_push` 分支。
     if (clonedNode.children.length) {
       buildSlots(clonedNode, context, (props, vFor, children) => {
         vnodeBranches.push(
@@ -138,6 +142,8 @@ export const ssrTransformComponent: NodeTransform = (node, context) => {
     if (node.props.length) {
       // note we are not passing ssr: true here because for components, v-on
       // handlers should still be passed
+      // 组件 props 和原生元素不同：即使在 SSR 下，事件监听这类信息仍可能要保留给
+      // 组件 vnode / runtime，而不是像原生元素那样直接转成 HTML 属性字符串。
       const { props, directives } = buildProps(
         node,
         context,
@@ -154,6 +160,8 @@ export const ssrTransformComponent: NodeTransform = (node, context) => {
     wipMap.set(node, wipEntries)
 
     const buildSSRSlotFn: SlotFnBuilder = (props, _vForExp, children, loc) => {
+      // SSR slot 函数签名不是普通 `(props) => vnode`，
+      // 而是 `(props, _push, _parent, _scopeId) => { ... }`。
       const param0 = (props && stringifyExpression(props)) || `_`
       const fn = createFunctionExpression(
         [param0, `_push`, `_parent`, `_scopeId`],
@@ -180,6 +188,7 @@ export const ssrTransformComponent: NodeTransform = (node, context) => {
       // dynamic component that resolved to a `resolveDynamicComponent` call
       // expression - since the resolved result may be a plain element (string)
       // or a VNode, handle it with `renderVNode`.
+      // 动态组件编译期无法确定最终是不是普通元素，所以走 renderVNode 更稳妥。
       node.ssrCodegenNode = createCallExpression(
         context.helper(SSR_RENDER_VNODE),
         [
@@ -227,6 +236,7 @@ export function ssrProcessComponent(
       if (component === TRANSITION) {
         return ssrProcessTransition(node, context)
       }
+      // 对于“透传型”内置组件，SSR 最终直接展开它的 children。
       processChildren(node, context)
     }
   } else {
@@ -238,6 +248,8 @@ export function ssrProcessComponent(
       // one normal vnode-based branch. The branches are taken based on the
       // presence of the 2nd `_push` argument (which is only present if the slot
       // is called by `_ssrRenderSlot`.
+      // 这就是 slot 的“双分支”机制：
+      // 有 `_push` 时走 SSR 字符串输出；否则退回 vnode fallback。
       fn.body = createIfStatement(
         createSimpleExpression(`_push`, false),
         processChildrenAsStatement(
@@ -257,12 +269,14 @@ export function ssrProcessComponent(
 
     if (typeof component === 'string') {
       // static component
+      // 静态组件最终会编成 `_push(_ssrRenderComponent(...))`。
       context.pushStatement(
         createCallExpression(`_push`, [node.ssrCodegenNode]),
       )
     } else {
       // dynamic component (`resolveDynamicComponent` call)
       // the codegen node is a `renderVNode` call
+      // 动态组件最终直接把 renderVNode 语句压进当前 body。
       context.pushStatement(node.ssrCodegenNode)
     }
   }
@@ -306,6 +320,8 @@ function createVNodeSlotBranch(
   // wrap the children with a wrapper template for proper children treatment.
   // important: provide v-slot="props" and v-for="exp" on the wrapper for
   // proper scope analysis
+  // 这里故意临时包一层 template，是为了让 core 的 slot/v-for 作用域分析逻辑
+  // 仍能按平常的 vnode 编译路径工作。
   const wrapperProps: TemplateNode['props'] = []
   if (slotProps) {
     wrapperProps.push({

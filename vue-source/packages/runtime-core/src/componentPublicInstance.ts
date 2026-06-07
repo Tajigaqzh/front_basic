@@ -388,6 +388,7 @@ export const publicPropertiesMap: PublicPropertiesMap =
   // Move PURE marker to new line to workaround compiler discarding it
   // due to type annotation
   /*@__PURE__*/ extend(Object.create(null), {
+    // `$` 直接暴露内部实例本体，主要给极少数高级调试/底层场景使用。
     $: i => i,
     $el: i => i.vnode.el,
     $data: i => i.data,
@@ -403,8 +404,10 @@ export const publicPropertiesMap: PublicPropertiesMap =
     $forceUpdate: i =>
       i.f ||
       (i.f = () => {
+        // `f` 缓存的是公开实例上的 `$forceUpdate` 包装函数，避免每次访问都新建闭包。
         queueJob(i.update)
       }),
+    // `n` 缓存的是绑好当前 proxy 的 nextTick，避免每次访问都重新 bind。
     $nextTick: i => i.n || (i.n = nextTick.bind(i.proxy!)),
     $watch: i => (__FEATURE_OPTIONS_API__ ? instanceWatch.bind(i) : NOOP),
   } as PublicPropertiesMap)
@@ -420,6 +423,7 @@ enum AccessTypes {
   PROPS,
   CONTEXT,
 }
+// `AccessTypes` 是 accessCache 的枚举值，表示某个 key 上次命中了实例公开代理的哪一层来源。
 
 export interface ComponentRenderContext {
   [key: string]: any
@@ -452,11 +456,20 @@ const hasSetupBinding = (state: Data, key: string) =>
  */
 export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
   get({ _: instance }: ComponentRenderContext, key: string) {
+    // 这是组件公开代理最热的读取路径。
+    // 模板表达式、render 函数里的 `this.xxx`，本质上几乎都会落到这里。
+    //
+    // 整体分发策略是：
+    // 1. 先查 accessCache，复用上次命中的来源层级
+    // 2. 再按 setupState -> data -> props -> ctx 的优先级探测
+    // 3. 最后处理 `$xxx` 公共属性、CSS Modules、全局属性等兜底来源
     // `ReactiveFlags.SKIP` 让外部工具能识别这个代理目标不应再被响应式系统深度代理。
     if (key === ReactiveFlags.SKIP) {
       return true
     }
 
+    // 这几个对象分别代表组件公开代理可能命中的几层来源。
+    // `get` 的核心任务就是在这些来源之间按既定优先级做分发。
     const { ctx, setupState, data, props, accessCache, type, appContext } =
       instance
 
@@ -502,6 +515,7 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
         accessCache![key] = AccessTypes.PROPS
         return props![key]
       } else if (ctx !== EMPTY_OBJ && hasOwn(ctx, key)) {
+        // `ctx` 里一般放 methods/computed/injected/custom ctx 字段，是最后一层普通实例上下文。
         accessCache![key] = AccessTypes.CONTEXT
         return ctx[key]
       } else if (!__FEATURE_OPTIONS_API__ || shouldCacheAccess) {
@@ -514,6 +528,9 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
     let cssModule, globalProperties
     // public $xxx properties
     if (publicGetter) {
+      // `$attrs` 要在这里单独打点：
+      // render 收口阶段后面会据此判断开发者是否已经显式处理 attrs，
+      // 从而决定是否继续自动 fallthrough 以及是否给开发告警。
       if (key === '$attrs') {
         // `$attrs` 访问需要建立依赖，这样依赖它的 render 才能在 attrs 变化后重新执行。
         track(instance.attrs, TrackOpTypes.GET, '')
@@ -549,6 +566,7 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
           return isFunction(val) ? extend(val.bind(instance.proxy), val) : val
         }
       } else {
+        // 非 compat 场景直接透传全局属性值，不做额外 this 绑定语义处理。
         return globalProperties[key]
       }
     } else if (
@@ -580,6 +598,10 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
     key: string,
     value: any,
   ): boolean {
+    // 写入路径也遵循实例分层语义：
+    // - setupState / data 可写
+    // - props 只读
+    // - 其他普通字段默认回落到 ctx，作为运行时自定义上下文扩展
     const { data, setupState, ctx } = instance
     if (hasSetupBinding(setupState, key)) {
       // 组合式 API 暴露出来的普通 setup 返回值允许通过代理写回。
@@ -635,6 +657,7 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
     // `in proxy` / `with proxy` 场景会走到这里，因此判断顺序也尽量贴近 `get` 的可见性规则。
     let cssModules
     return !!(
+      // accessCache 命中过的 key 直接视为存在，避免再重复多层探测。
       accessCache![key] ||
       (__FEATURE_OPTIONS_API__ &&
         data !== EMPTY_OBJ &&
@@ -678,6 +701,13 @@ if (__DEV__ && !__TEST__) {
 export const RuntimeCompiledPublicInstanceProxyHandlers: ProxyHandler<any> =
   /*@__PURE__*/ extend({}, PublicInstanceProxyHandlers, {
     get(target: ComponentRenderContext, key: string) {
+      /**
+       * 运行时编译产物使用 `with (_ctx) { ... }` 时的专用代理。
+       *
+       * 这里和普通代理的差异不在取值结果，而在于：
+       * - 需要避开 `Symbol.unscopables`
+       * - 需要配合 `has()` 精准控制 `with` 作用域里哪些标识符应当落到组件上下文
+       */
       // fast path for unscopables when using `with` block
       if ((key as any) === Symbol.unscopables) {
         return
@@ -685,6 +715,7 @@ export const RuntimeCompiledPublicInstanceProxyHandlers: ProxyHandler<any> =
       return PublicInstanceProxyHandlers.get!(target, key, target)
     },
     has(_: ComponentRenderContext, key: string) {
+      // `with (_ctx)` 里以下划线开头的标识符要主动屏蔽，避免误把内部字段暴露进模板作用域。
       const has = key[0] !== '_' && !isGloballyAllowed(key)
       if (__DEV__ && !has && PublicInstanceProxyHandlers.has!(_, key)) {
         warn(
@@ -718,7 +749,8 @@ export function createDevRenderContext(instance: ComponentInternalInstance) {
     get: () => instance,
   })
 
-  // expose public properties
+  // 把 `$el / $props / $attrs ...` 都定义成真实 getter，
+  // 这样在浏览器控制台直接展开代理目标时也能看到接近运行时真实值的内容。
   Object.keys(publicPropertiesMap).forEach(key => {
     Object.defineProperty(target, key, {
       configurable: true,
@@ -772,6 +804,7 @@ export function exposeSetupStateOnRenderContext(
   instance: ComponentInternalInstance,
 ): void {
   const { ctx, setupState } = instance
+  // `toRaw(setupState)` 用来拿到 setupState 的原始 key 集合，避免代理层枚举干扰。
   Object.keys(toRaw(setupState)).forEach(key => {
     if (!setupState.__isScriptSetup) {
       if (isReservedPrefix(key[0])) {

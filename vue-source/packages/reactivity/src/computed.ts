@@ -46,6 +46,13 @@ export interface WritableComputedOptions<T, S = T> {
  */
 export class ComputedRefImpl<T = any> implements Subscriber {
   /**
+   * computed 同时扮演两种角色：
+   * - 对外它像一个 ref，通过 `.value` 暴露缓存结果
+   * - 对内它又像一个 subscriber，会去订阅上游 dep
+   *
+   * 可以把它理解成“外面是 ref 壳，里面是惰性 effect 核”。
+   */
+  /**
    * @internal
    */
   _value: any = undefined
@@ -115,6 +122,8 @@ export class ComputedRefImpl<T = any> implements Subscriber {
    * @internal
    */
   notify(): true | void {
+    // 上游依赖变化时，computed 不立即重算，只先标记 DIRTY 并入队。
+    // 真正求值发生在下次有人读取 `.value` 时。
     this.flags |= EffectFlags.DIRTY
     if (
       !(this.flags & EffectFlags.NOTIFIED) &&
@@ -129,6 +138,9 @@ export class ComputedRefImpl<T = any> implements Subscriber {
   }
 
   get value(): T {
+    // 读取 computed.value 时有两件事同时发生：
+    // 1. 外层 effect 订阅当前 computed 自己的 dep
+    // 2. 如有必要，刷新内部 getter 的缓存值
     const link = __DEV__
       ? this.dep.track({
           target: this,
@@ -200,6 +212,8 @@ export function computed<T>(
   debugOptions?: DebuggerOptions,
   isSSR = false,
 ) {
+  // computed 只负责组装 getter/setter 和调试钩子；
+  // 真正的缓存、依赖跟踪和脏检查都在 ComputedRefImpl 与 refreshComputed 中完成。
   let getter: ComputedGetter<T>
   let setter: ComputedSetter<T> | undefined
 

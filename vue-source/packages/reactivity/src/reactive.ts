@@ -55,7 +55,8 @@ function targetTypeMap(rawType: string) {
   }
 }
 
-// only unwrap nested ref
+// 只有嵌套属性里的 ref 才会在 reactive 对象读取时自动解包；
+// 顶层 Ref 本身仍然保持 Ref 语义。
 export type UnwrapNestedRefs<T> = T extends Ref ? T : UnwrapRefSimple<T>
 
 declare const ReactiveMarkerSymbol: unique symbol
@@ -266,6 +267,14 @@ function createReactiveObject(
   collectionHandlers: ProxyHandler<any>,
   proxyMap: WeakMap<Target, any>,
 ) {
+  // 所有 reactive/readonly/shallow* 最终都会汇总到这里。
+  // 这里做的不是依赖收集，而是“为某个对象选择合适的 Proxy 包装策略”：
+  // - 普通对象/数组 -> baseHandlers
+  // - Map/Set/WeakMap/WeakSet -> collectionHandlers
+  //
+  // 这样读写拦截层和 dep/effect 层被清晰拆开：
+  // createReactiveObject 负责建代理
+  // Proxy trap 负责把读写事件转发到 track/trigger
   if (!isObject(target)) {
     if (__DEV__) {
       warn(
@@ -389,6 +398,7 @@ export function isProxy(value: any): boolean {
  */
 /*@__NO_SIDE_EFFECTS__*/
 export function toRaw<T>(observed: T): T {
+  // Proxy 可能套 Proxy，所以这里递归剥离到最原始对象为止。
   const raw = observed && (observed as Target)[ReactiveFlags.RAW]
   return raw ? toRaw(raw) : observed
 }

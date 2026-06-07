@@ -38,6 +38,7 @@ export const transformBind: DirectiveTransform = (dir, _node, context) => {
   }
 
   if (arg.type !== NodeTypes.SIMPLE_EXPRESSION) {
+    // 动态参数要兜底成非空字符串，避免运行时出现非法 key。
     arg.children.unshift(`(`)
     arg.children.push(`) || ""`)
   } else if (!arg.isStatic) {
@@ -46,6 +47,7 @@ export const transformBind: DirectiveTransform = (dir, _node, context) => {
 
   // .sync is replaced by v-model:arg
   if (modifiers.some(mod => mod.content === 'camel')) {
+    // `.camel` 会把参数名转成驼峰，例如 `foo-bar` -> `fooBar`。
     if (arg.type === NodeTypes.SIMPLE_EXPRESSION) {
       if (arg.isStatic) {
         arg.content = camelize(arg.content)
@@ -60,9 +62,11 @@ export const transformBind: DirectiveTransform = (dir, _node, context) => {
 
   if (!context.inSSR) {
     if (modifiers.some(mod => mod.content === 'prop')) {
+      // `.prop` 用前缀标记，提示运行时按 DOM property 而不是 attribute 处理。
       injectPrefix(arg, '.')
     }
     if (modifiers.some(mod => mod.content === 'attr')) {
+      // `.attr` 则强制按 attribute 语义处理。
       injectPrefix(arg, '^')
     }
   }
@@ -73,6 +77,7 @@ export const transformBind: DirectiveTransform = (dir, _node, context) => {
 }
 
 const injectPrefix = (arg: ExpressionNode, prefix: string) => {
+  // 这里不是直接改运行时逻辑，而是把前缀编码进 key，交给后续 patch 流程识别。
   if (arg.type === NodeTypes.SIMPLE_EXPRESSION) {
     if (arg.isStatic) {
       arg.content = prefix + arg.content

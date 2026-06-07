@@ -155,6 +155,7 @@ function createCodegenContext(
     inSSR = false,
   }: CodegenOptions,
 ): CodegenContext {
+  // codegen 上下文负责积累最终代码字符串、缩进状态和 source map 信息。
   const context: CodegenContext = {
     mode,
     prefixIdentifiers,
@@ -177,9 +178,11 @@ function createCodegenContext(
     pure: false,
     map: undefined,
     helper(key) {
+      // helper 在代码中统一生成为 `_xxx` 形式的局部变量名。
       return `_${helperNameMap[key]}`
     },
     push(code, newlineIndex = NewlineType.None, node) {
+      // 所有代码输出都统一经过 push，顺带维护 source map 的位置信息。
       context.code += code
       if (!__BROWSER__ && context.map) {
         if (node) {
@@ -210,6 +213,7 @@ function createCodegenContext(
             }
             context.column += code.length
           } else {
+            // 已知只有一个换行时走快路径，避免完整扫描整段字符串。
             // single newline at known index
             if (newlineIndex === NewlineType.End) {
               newlineIndex = code.length - 1
@@ -254,6 +258,7 @@ function createCodegenContext(
   }
 
   function addMapping(loc: Position, name: string | null = null) {
+    // 直接写 source-map 内部结构，减少公开 API 带来的额外开销。
     // we use the private property to directly add the mapping
     // because the addMapping() implementation in source-map-js has a bunch of
     // unnecessary arg and validation checks that are pure overhead in our case.
@@ -286,6 +291,7 @@ export function generate(
     onContextCreated?: (context: CodegenContext) => void
   } = {},
 ): CodegenResult {
+  // codegen 读取 transform 阶段准备好的 codegenNode，输出 render 函数字符串。
   const context = createCodegenContext(ast, options)
   if (options.onContextCreated) options.onContextCreated(context)
   const {
@@ -312,11 +318,14 @@ export function generate(
     ? createCodegenContext(ast, options)
     : context
   if (!__BROWSER__ && mode === 'module') {
+    // module 模式生成 ESM import/export。
     genModulePreamble(ast, preambleContext, genScopeId, isSetupInlined)
   } else {
+    // function 模式生成运行时可直接执行的 render 函数。
     genFunctionPreamble(ast, preambleContext)
   }
   // enter render function
+  // SSR 和客户端 render 函数的签名不同。
   const functionName = ssr ? `ssrRender` : `render`
   const args = ssr ? ['_ctx', '_push', '_parent', '_attrs'] : ['_ctx', '_cache']
   if (!__BROWSER__ && options.bindingMetadata && !options.inline) {
@@ -329,13 +338,16 @@ export function generate(
       : args.join(', ')
 
   if (isSetupInlined) {
+    // setup inline 模式下直接生成箭头函数体。
     push(`(${signature}) => {`)
   } else {
+    // 普通模式生成命名 render 函数。
     push(`function ${functionName}(${signature}) {`)
   }
   indent()
 
   if (useWithBlock) {
+    // 非 prefixIdentifiers 模式下，模板表达式通过 `with (_ctx)` 访问上下文。
     push(`with (_ctx) {`)
     indent()
     // function mode const declarations should be inside with block
@@ -350,6 +362,7 @@ export function generate(
   }
 
   // generate asset resolution statements
+  // 这里会生成 resolveComponent / resolveDirective 等资源解析代码。
   if (ast.components.length) {
     genAssets(ast.components, 'component', context)
     if (ast.directives.length || ast.temps > 0) {
@@ -384,8 +397,10 @@ export function generate(
     push(`return `)
   }
   if (ast.codegenNode) {
+    // 根 codegenNode 通常由 transformElement / vIf / vFor / createRootCodegen 生成。
     genNode(ast.codegenNode, context)
   } else {
+    // 空模板时直接返回 null。
     push(`null`)
   }
 
@@ -426,6 +441,7 @@ function genFunctionPreamble(ast: RootNode, context: CodegenContext) {
   const helpers = Array.from(ast.helpers)
   if (helpers.length > 0) {
     if (!__BROWSER__ && prefixIdentifiers) {
+      // prefixIdentifiers 模式没有 with，因此 helper 需要显式解构到局部作用域。
       push(
         `const { ${helpers.map(aliasHelper).join(', ')} } = ${VueBinding}\n`,
         NewlineType.End,
@@ -433,11 +449,13 @@ function genFunctionPreamble(ast: RootNode, context: CodegenContext) {
     } else {
       // "with" mode.
       // save Vue in a separate variable to avoid collision
+      // with 模式下先把全局 Vue 存成 _Vue，避免和用户模板变量重名。
       push(`const _Vue = ${VueBinding}\n`, NewlineType.End)
       // in "with" mode, helpers are declared inside the with block to avoid
       // has check cost, but hoists are lifted out of the function - we need
       // to provide the helper here.
       if (ast.hoists.length) {
+        // 被提升到 render 外的静态节点同样需要这些 helper。
         const staticHelpers = [
           CREATE_VNODE,
           CREATE_ELEMENT_VNODE,
@@ -485,6 +503,7 @@ function genModulePreamble(
   if (ast.helpers.size) {
     const helpers = Array.from(ast.helpers)
     if (optimizeImports) {
+      // 为 webpack code-split 做的重绑定优化，避免 helper 调用被包装。
       // when bundled with webpack with code-split, calling an import binding
       // as a function leads to it being wrapped with `Object(a.b)` or `(0,a.b)`,
       // incurring both payload size increase and potential perf overhead.
@@ -503,6 +522,7 @@ function genModulePreamble(
         NewlineType.End,
       )
     } else {
+      // 常规 module 模式下，直接把 helper 别名导入成 `_xxx`。
       push(
         `import { ${helpers
           .map(s => `${helperNameMap[s]} as _${helperNameMap[s]}`)
@@ -539,6 +559,7 @@ function genAssets(
   type: 'component' | 'directive' | 'filter',
   { helper, push, newline, isTS }: CodegenContext,
 ) {
+  // 组件、指令、过滤器在 render 开头统一 resolve 成局部常量。
   const resolver = helper(
     __COMPAT__ && type === 'filter'
       ? RESOLVE_FILTER
@@ -569,6 +590,7 @@ function genHoists(hoists: (JSChildNode | null)[], context: CodegenContext) {
     return
   }
   context.pure = true
+  // hoist 代码会打上 pure 语义，方便后续 tree-shaking。
   const { push, newline } = context
   newline()
 
@@ -610,6 +632,7 @@ function genNodeListAsArray(
   nodes: (string | CodegenNode | TemplateChildNode[])[],
   context: CodegenContext,
 ) {
+  // 节点数量较多或出现复杂节点时切成多行数组，提高生成代码可读性。
   const multilines =
     nodes.length > 3 ||
     ((!__BROWSER__ || __DEV__) && nodes.some(n => isArray(n) || !isText(n)))

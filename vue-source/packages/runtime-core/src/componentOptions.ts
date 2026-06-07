@@ -713,6 +713,7 @@ export function applyOptions(instance: ComponentInternalInstance): void {
 
   if (watchOptions) {
     for (const key in watchOptions) {
+      // `watch` 选项最终全部转成组合式 `watch()`，只是在这里补齐 Options API 语法糖兼容。
       createWatcher(watchOptions[key], ctx, publicThis, key)
     }
   }
@@ -739,6 +740,7 @@ export function applyOptions(instance: ComponentInternalInstance): void {
     hook?: Function | Function[],
   ) {
     if (isArray(hook)) {
+      // mixin / extends 合并后，同一生命周期经常已经是数组，这里逐个绑定 `this` 后注册。
       hook.forEach(_hook => register(_hook.bind(publicThis)))
     } else if (hook) {
       register(hook.bind(publicThis))
@@ -819,6 +821,20 @@ export function resolveInjections(
   ctx: any,
   checkDuplicateProperties = NOOP as any,
 ): void {
+  /**
+   * 解析并挂载 Options API 的 `inject`。
+   *
+   * 主要功能：
+   * - 支持数组写法和对象写法
+   * - 支持 `from` 重命名来源 key
+   * - 支持默认值工厂
+   * - 当注入值本身是 ref 时，在代理层自动展开 `.value`
+   *
+   * 参数：
+   * - `injectOptions`：组件上声明的 inject 配置
+   * - `ctx`：组件公开上下文对象，解析结果最终会挂到这里
+   * - `checkDuplicateProperties`：开发期重复 key 检查器
+   */
   if (isArray(injectOptions)) {
     injectOptions = normalizeInject(injectOptions)!
   }
@@ -837,6 +853,7 @@ export function resolveInjections(
         injected = inject(opt.from || key)
       }
     } else {
+      // 简写形式 `inject: ['foo']` / `inject: { bar: 'foo' }` 最终都收口到 inject(key)。
       injected = inject(opt)
     }
     if (isRef(injected)) {
@@ -864,6 +881,14 @@ function callHook(
   instance: ComponentInternalInstance,
   type: LifecycleHooks,
 ) {
+  /**
+   * 以组件 public proxy 作为 `this` 执行 Options API 生命周期钩子。
+   *
+   * 为什么单独封装：
+   * - 需要统一把 `this` 绑定到 `instance.proxy`
+   * - 需要统一接入 runtime-core 的异步错误处理通道
+   * - 生命周期既可能是单个函数，也可能是 mixin 合并后的函数数组
+   */
   callWithAsyncErrorHandling(
     isArray(hook)
       ? hook.map(h => h.bind(instance.proxy!))
@@ -901,6 +926,7 @@ export function createWatcher(
         ? currentInstance
         : null
 
+    // 兼容模式下数组 watch 默认要更接近 Vue 2 语义，因此这里先探测一次当前值。
     const newValue = getter()
     if (
       isArray(newValue) &&
@@ -909,6 +935,7 @@ export function createWatcher(
       options.deep = true
     }
 
+    // `baseGetter` 保存原始取值逻辑，后面会在它外面再包一层数组 traverse。
     const baseGetter = getter
     getter = () => {
       const val = baseGetter()
@@ -928,6 +955,7 @@ export function createWatcher(
       if (__COMPAT__) {
         watch(getter, handler as WatchCallback, options)
       } else {
+        // 字符串 handler 本质上是去实例上下文里按名字找方法再交给 watch。
         watch(getter, handler as WatchCallback)
       }
     } else if (__DEV__) {
@@ -937,16 +965,19 @@ export function createWatcher(
     if (__COMPAT__) {
       watch(getter, raw.bind(publicThis), options)
     } else {
+      // 函数写法最直接，绑定 publicThis 后交给组合式 watch。
       watch(getter, raw.bind(publicThis))
     }
   } else if (isObject(raw)) {
     if (isArray(raw)) {
+      // 数组写法表示同一个 key 挂了多个 watcher，逐个递归展开。
       raw.forEach(r => createWatcher(r, ctx, publicThis, key))
     } else {
       const handler = isFunction(raw.handler)
         ? raw.handler.bind(publicThis)
         : (ctx[raw.handler] as WatchCallback)
       if (isFunction(handler)) {
+        // 对象写法会把 `deep/immediate/flush/...` 这些配置直接透传给底层 watch。
         watch(getter, handler, __COMPAT__ ? extend(raw, options) : raw)
       } else if (__DEV__) {
         warn(`Invalid watch handler specified by key "${raw.handler}"`, handler)
@@ -963,6 +994,19 @@ export function createWatcher(
 export function resolveMergedOptions(
   instance: ComponentInternalInstance,
 ): MergedComponentOptions {
+  /**
+   * 解析组件最终生效的 options。
+   *
+   * 主要功能：
+   * - 合并全局 mixins
+   * - 合并组件自身的 `extends`
+   * - 合并组件自身的 `mixins`
+   * - 结果缓存到 `appContext.optionsCache`
+   *
+   * 为什么要缓存：
+   * - 同一个组件类型可能被多次创建实例
+   * - options 合并是纯结构性工作，重复执行没有意义
+   */
   const base = instance.type as ComponentOptions
   const { mixins, extends: extendsOptions } = base
   const {
@@ -978,6 +1022,7 @@ export function resolveMergedOptions(
   if (cached) {
     resolved = cached
   } else if (!globalMixins.length && !mixins && !extendsOptions) {
+    // 没有任何外部合并来源时，绝大多数组件可以直接复用原 options 对象，避免额外 clone。
     if (
       __COMPAT__ &&
       isCompatEnabled(DeprecationTypes.PRIVATE_APIS, instance)
@@ -991,6 +1036,7 @@ export function resolveMergedOptions(
   } else {
     resolved = {}
     if (globalMixins.length) {
+      // 全局 mixin 先合并，它们语义上属于整个 app 的最外层基底配置。
       globalMixins.forEach(m =>
         mergeOptions(resolved, m, optionMergeStrategies, true),
       )
@@ -1012,6 +1058,20 @@ export function mergeOptions(
   strats: Record<string, OptionMergeFunction>,
   asMixin = false,
 ): any {
+  /**
+   * 把一份来源 options 合并进目标 options。
+   *
+   * 主要功能：
+   * - 递归处理 `extends`
+   * - 递归处理 `mixins`
+   * - 按每个字段对应的合并策略写入目标对象
+   *
+   * 参数：
+   * - `to`：目标 options
+   * - `from`：来源 options
+   * - `strats`：应用级自定义 option 合并策略
+   * - `asMixin`：当前是否处于 mixin/extends 合并链路
+   */
   if (__COMPAT__ && isFunction(from)) {
     from = from.options
   }
@@ -1035,6 +1095,8 @@ export function mergeOptions(
             `It should only be declared in the base component itself.`,
         )
     } else {
+      // 每个 option 会优先命中内置策略，其次才是应用层自定义策略。
+      // 如果都没有，就直接以后者覆盖前者。
       const strat = internalOptionMergeStrats[key] || (strats && strats[key])
       to[key] = strat ? strat(to[key], from[key]) : from[key]
     }
@@ -1074,6 +1136,11 @@ export const internalOptionMergeStrats: Record<string, Function> = {
   provide: mergeDataFn,
   inject: mergeInject,
 }
+// 这张策略表定义了“同名 option 遇到多份来源时应该怎么合并”：
+// - data/provide：函数级合并
+// - 生命周期/watch：按数组叠加
+// - methods/computed/components/directives：对象浅合并
+// - props/emits/inject：先归一化再合并
 
 if (__COMPAT__) {
   internalOptionMergeStrats.filters = mergeObjectOptions
@@ -1090,6 +1157,7 @@ function mergeDataFn(to: any, from: any) {
     return from
   }
   return function mergedDataFn(this: ComponentPublicInstance) {
+    // 真正执行时才按当前实例 this 去跑两个 data/provide 函数，保证它们能访问实例状态。
     return (
       __COMPAT__ && isCompatEnabled(DeprecationTypes.OPTIONS_DATA_MERGE, null)
         ? deepMergeData
@@ -1120,6 +1188,7 @@ function normalizeInject(
   if (isArray(raw)) {
     const res: ObjectInjectOptions = {}
     for (let i = 0; i < raw.length; i++) {
+      // 数组 inject 语法的含义就是“本地 key 与来源 key 同名”。
       res[raw[i]] = raw[i]
     }
     return res
@@ -1131,6 +1200,7 @@ function normalizeInject(
  * 作用：把生命周期这类“可叠加”选项合并成去重后的数组。
  */
 function mergeAsArray<T = Function>(to: T[] | T | undefined, from: T | T[]) {
+  // 生命周期、watch 等可叠加项统一转数组并去重，保证 mixin/extends 多来源都能保留。
   return to ? [...new Set([].concat(to as any, from as any))] : from
 }
 
@@ -1138,6 +1208,7 @@ function mergeAsArray<T = Function>(to: T[] | T | undefined, from: T | T[]) {
  * 作用：合并对象类 options，并让结果对象不受原型链干扰。
  */
 function mergeObjectOptions(to: Object | undefined, from: Object | undefined) {
+  // 用 `Object.create(null)` 消掉原型链干扰，避免对象类选项合并后误命中继承字段。
   return to ? extend(Object.create(null), to, from) : from
 }
 
@@ -1155,8 +1226,10 @@ function mergeEmitsOrPropsOptions(
 ) {
   if (to) {
     if (isArray(to) && isArray(from)) {
+      // 数组写法只表达“声明了哪些 key”，直接并集去重即可。
       return [...new Set([...to, ...from])]
     }
+    // 对象/混合写法则先统一归一化成对象，再做浅合并。
     return extend(
       Object.create(null),
       normalizePropsOrEmits(to),
@@ -1175,6 +1248,7 @@ function mergeWatchOptions(
   if (!from) return to
   const merged = extend(Object.create(null), to)
   for (const key in from) {
+    // 同一个字段名可以同时被多份 watch 声明监听，因此这里走数组叠加而不是直接覆盖。
     merged[key] = mergeAsArray(to[key], from[key])
   }
   return merged

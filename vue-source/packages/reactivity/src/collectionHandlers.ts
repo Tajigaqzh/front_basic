@@ -35,6 +35,8 @@ function createIterableMethod(
   isReadonly: boolean,
   isShallow: boolean,
 ) {
+  // Map/Set 的核心不是属性访问，而是 get/set/add/delete/迭代。
+  // 因此集合类型不能复用普通对象的 baseHandlers，必须单独包装这些方法。
   return function (
     this: IterableCollections,
     ...args: unknown[]
@@ -99,6 +101,8 @@ function createInstrumentations(
 ): Instrumentations {
   const instrumentations: Instrumentations = {
     get(this: MapTypes, key: unknown) {
+      // Map.get 既要处理 reactive key / raw key 的对齐，
+      // 又要保证返回值继续保持对应的 reactive/readonly 语义。
       // #1772: readonly(reactive(Map)) should return readonly + reactive version
       // of the value
       const target = this[ReactiveFlags.RAW]
@@ -123,11 +127,13 @@ function createInstrumentations(
       }
     },
     get size() {
+      // 读取 size 属于“依赖集合整体结构”，因此追踪 ITERATE_KEY。
       const target = (this as unknown as IterableCollections)[ReactiveFlags.RAW]
       !readonly && track(toRaw(target), TrackOpTypes.ITERATE, ITERATE_KEY)
       return target.size
     },
     has(this: CollectionTypes, key: unknown): boolean {
+      // 集合判断存在性时，同样要兼容 raw key 与 reactive key 的双向查询。
       const target = this[ReactiveFlags.RAW]
       const rawTarget = toRaw(target)
       const rawKey = toRaw(key)
@@ -142,6 +148,7 @@ function createInstrumentations(
         : target.has(key) || target.has(rawKey)
     },
     forEach(this: IterableCollections, callback: Function, thisArg?: unknown) {
+      // forEach 的值和 key 也必须按当前 handler 模式包成 reactive/readonly/shallow。
       const observed = this
       const target = observed[ReactiveFlags.RAW]
       const rawTarget = toRaw(target)
@@ -167,6 +174,7 @@ function createInstrumentations(
         }
       : {
           add(this: SetTypes, value: unknown) {
+            // Set.add 只有在集合原本不存在该值时才触发 ADD。
             const target = toRaw(this)
             const proto = getProto(target)
             const rawValue = toRaw(value)
@@ -187,6 +195,8 @@ function createInstrumentations(
             return this
           },
           set(this: MapTypes, key: unknown, value: unknown) {
+            // Map.set 需要区分“新 key”还是“旧 key 更新”，
+            // 分别映射到 ADD / SET，进而影响不同 dep。
             if (!shallow && !isShallow(value) && !isReadonly(value)) {
               value = toRaw(value)
             }
@@ -211,6 +221,7 @@ function createInstrumentations(
             return this
           },
           delete(this: CollectionTypes, key: unknown) {
+            // delete 和对象属性删除类似，但这里删除的是集合元素或 Map 键。
             const target = toRaw(this)
             const { has, get } = getProto(target)
             let hadKey = has.call(target, key)
@@ -230,6 +241,7 @@ function createInstrumentations(
             return result
           },
           clear(this: IterableCollections) {
+            // clear 会让整个集合的所有相关依赖一起失效，所以会触发 CLEAR。
             const target = toRaw(this)
             const hadItems = target.size !== 0
             const oldTarget = __DEV__
@@ -275,6 +287,8 @@ function createInstrumentationGetter(isReadonly: boolean, shallow: boolean) {
     key: string | symbol,
     receiver: CollectionTypes,
   ) => {
+    // 集合代理的 get trap 只做一件事：
+    // 根据 key 决定返回内部标志位，还是返回被增强过的方法实现。
     if (key === ReactiveFlags.IS_REACTIVE) {
       return !isReadonly
     } else if (key === ReactiveFlags.IS_READONLY) {

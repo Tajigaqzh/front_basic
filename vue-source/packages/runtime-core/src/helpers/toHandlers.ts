@@ -21,6 +21,14 @@ export function toHandlers(
   obj: Record<string, any>,
   preserveCaseIfNecessary?: boolean,
 ): Record<string, any> {
+  /**
+   * 把对象形式事件映射转成标准 `onXxx` props。
+   *
+   * 主要功能：
+   * - 遍历原对象里的事件名
+   * - 按运行时约定转换成 `onClick` / `onUpdate:modelValue` 这类键
+   * - 必要时保留大小写精确事件名
+   */
   const ret: Record<string, any> = {}
   if (__DEV__ && !isObject(obj)) {
     warn(`v-on with no argument expects an object value.`)

@@ -1,3 +1,4 @@
+// 结构指令 transform 相关能力。
 import {
   type NodeTransform,
   type TransformContext,
@@ -49,11 +50,13 @@ import { processExpression } from './transformExpression'
 import { validateBrowserExpression } from '../validateExpression'
 import { PatchFlags } from '@vue-source/shared'
 
+// v-for 会把元素/模板节点提升成 ForNode，并生成 renderList(...) 结构。
 export const transformFor: NodeTransform = createStructuralDirectiveTransform(
   'for',
   (node, dir, context) => {
     const { helper, removeHelper } = context
     return processFor(node, dir, context, forNode => {
+      // v-for 最终会生成 `renderList(source, (value, key, index) => child)`。
       // create the loop render function expression now, and add the
       // iterator on exit after all children have been traversed
       const renderExp = createCallExpression(helper(RENDER_LIST), [
@@ -74,6 +77,7 @@ export const transformFor: NodeTransform = createStructuralDirectiveTransform(
       const keyProperty = keyExp ? createObjectProperty(`key`, keyExp) : null
 
       if (!__BROWSER__) {
+        // `<template v-for>` 自身之后会被 ForNode 吃掉，所以这里提前处理它上的表达式。
         // #2085 / #5288 process :key and v-memo expressions need to be
         // processed on `<template v-for>`. In this case the node is discarded
         // and never traversed so its binding expressions won't be processed
@@ -98,12 +102,14 @@ export const transformFor: NodeTransform = createStructuralDirectiveTransform(
       const isStableFragment =
         forNode.source.type === NodeTypes.SIMPLE_EXPRESSION &&
         forNode.source.constType > ConstantTypes.NOT_CONSTANT
+      // 根据数据源稳定性和 key 情况决定 Fragment 的 patchFlag。
       const fragmentFlag = isStableFragment
         ? PatchFlags.STABLE_FRAGMENT
         : keyProp
           ? PatchFlags.KEYED_FRAGMENT
           : PatchFlags.UNKEYED_FRAGMENT
 
+      // 外层先生成一个 Fragment block，内部 children 是 renderList 调用。
       forNode.codegenNode = createVNodeCall(
         context,
         helper(FRAGMENT),
@@ -119,6 +125,7 @@ export const transformFor: NodeTransform = createStructuralDirectiveTransform(
       ) as ForCodegenNode
 
       return () => {
+        // 退出阶段时，循环体子节点都已经 transform 完，可以决定最终 childBlock。
         // finish the codegen now that all children have been traversed
         let childBlock: BlockCodegenNode
         const { children } = forNode
@@ -152,6 +159,7 @@ export const transformFor: NodeTransform = createStructuralDirectiveTransform(
             : null
 
         if (slotOutlet) {
+          // `<slot v-for>` 走 renderSlot 路径，不走普通元素/Fragment 路径。
           // <slot v-for="..."> or <template v-for="..."><slot/></template>
           childBlock = slotOutlet.codegenNode as RenderSlotCall
           if (isTemplate && keyProperty) {
@@ -161,6 +169,7 @@ export const transformFor: NodeTransform = createStructuralDirectiveTransform(
             injectProp(childBlock, keyProperty, context)
           }
         } else if (needFragmentWrapper) {
+          // 多根 `<template v-for>` 每次迭代都包一个 Fragment。
           // <template v-for="..."> with text or multi-elements
           // should generate a fragment block for each loop
           childBlock = createVNodeCall(
@@ -176,6 +185,7 @@ export const transformFor: NodeTransform = createStructuralDirectiveTransform(
             false /* isComponent */,
           )
         } else {
+          // 单根普通元素直接复用子元素 codegenNode，但要重新调整 block 状态。
           // Normal element v-for. Directly use the child's codegenNode
           // but mark it as a block.
           childBlock = (children[0] as PlainElementNode)
@@ -197,6 +207,7 @@ export const transformFor: NodeTransform = createStructuralDirectiveTransform(
               )
             }
           }
+          // 稳定列表可少做 block 跟踪；不稳定列表保留 block 便于高效 diff。
           childBlock.isBlock = !isStableFragment
           if (childBlock.isBlock) {
             helper(OPEN_BLOCK)
@@ -207,6 +218,7 @@ export const transformFor: NodeTransform = createStructuralDirectiveTransform(
         }
 
         if (memo) {
+          // v-memo 会额外生成“命中缓存则复用旧 vnode”的逻辑。
           const loop = createFunctionExpression(
             createForLoopParams(forNode.parseResult, [
               createSimpleExpression(`_cached`),
@@ -233,6 +245,7 @@ export const transformFor: NodeTransform = createStructuralDirectiveTransform(
           // increment cache count
           context.cached.push(null)
         } else {
+          // 普通 v-for 只需要把迭代函数塞给 renderList。
           renderExp.arguments.push(
             createFunctionExpression(
               createForLoopParams(forNode.parseResult),
@@ -253,6 +266,7 @@ export function processFor(
   context: TransformContext,
   processCodegen?: (forNode: ForNode) => (() => void) | undefined,
 ): (() => void) | undefined {
+  // parser 阶段已经把 v-for 拆成 source/value/key/index，这里直接消费它。
   if (!dir.exp) {
     context.onError(
       createCompilerError(ErrorCodes.X_V_FOR_NO_EXPRESSION, dir.loc),
@@ -285,11 +299,13 @@ export function processFor(
     children: isTemplateNode(node) ? node.children : [node],
   }
 
+  // 用 ForNode 替换原始元素，后续 transform/codegen 都以它为中心继续处理。
   context.replaceNode(forNode)
 
   // bookkeeping
   scopes.vFor++
   if (!__BROWSER__ && context.prefixIdentifiers) {
+    // v-for 别名引入了新的局部作用域，先登记，避免被误改写成 `_ctx.xxx`。
     // scope management
     // inject identifiers to context
     value && addIdentifiers(value)
@@ -302,6 +318,7 @@ export function processFor(
   return (): void => {
     scopes.vFor--
     if (!__BROWSER__ && context.prefixIdentifiers) {
+      // 离开当前循环作用域时，把这些局部别名从上下文里移除。
       value && removeIdentifiers(value)
       key && removeIdentifiers(key)
       index && removeIdentifiers(index)
@@ -314,6 +331,7 @@ export function finalizeForParseResult(
   result: ForParseResult,
   context: TransformContext,
 ): void {
+  // parser 只负责按语法拆分；这里继续处理每一段表达式的作用域和前缀。
   if (result.finalized) return
 
   if (!__BROWSER__ && context.prefixIdentifiers) {
@@ -344,6 +362,7 @@ export function finalizeForParseResult(
     }
   }
   if (__DEV__ && __BROWSER__) {
+    // 浏览器开发环境只做表达式合法性校验，不做完整前缀改写。
     validateBrowserExpression(result.source as SimpleExpressionNode, context)
     if (result.key) {
       validateBrowserExpression(
@@ -374,12 +393,14 @@ export function createForLoopParams(
   { value, key, index }: ForParseResult,
   memoArgs: ExpressionNode[] = [],
 ): ExpressionNode[] {
+  // 生成 renderList 回调参数列表，例如 `(item, key, index)`。
   return createParamsList([value, key, index, ...memoArgs])
 }
 
 function createParamsList(
   args: (ExpressionNode | undefined)[],
 ): ExpressionNode[] {
+  // 尾部空参数会被裁掉；中间缺位则用 `_`、`__` 这类占位符补齐位置。
   let i = args.length
   while (i--) {
     if (args[i]) break

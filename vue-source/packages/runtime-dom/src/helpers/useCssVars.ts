@@ -21,6 +21,7 @@ import {
 } from '@vue-source/runtime-core'
 import { NOOP, ShapeFlags, normalizeCssVarValue } from '@vue-source/shared'
 
+// 挂在 `style` 对象上的内部缓存键，用来保留“仅 CSS 变量部分”的文本结果。
 export const CSS_VAR_TEXT: unique symbol = Symbol(__DEV__ ? 'CSS_VAR_TEXT' : '')
 /**
  * 作用：把 SFC 编译生成的 CSS 变量 getter 接入当前组件实例的更新链路。
@@ -45,6 +46,8 @@ export function useCssVars(
   /* v8 ignore stop */
 
   // `updateTeleports` 专门处理 Teleport 场景下被传送到组件树外的节点。
+  // `instance.ut` 是挂在组件实例上的 teleport 变量刷新入口，
+  // 供运行时在 Teleport 目标节点变化后重复调用。
   const updateTeleports = (instance.ut = (vars = getter(instance.proxy)) => {
     Array.from(
       document.querySelectorAll(`[data-v-owner="${instance.uid}"]`),
@@ -56,6 +59,7 @@ export function useCssVars(
   }
 
   // 把最新 CSS 变量同步到组件当前渲染出来的真实节点上。
+  // `setVars` 是当前组件这组 CSS 变量的统一刷新函数。
   const setVars = () => {
     const vars = getter(instance.proxy)
     if (instance.ce) {
@@ -74,6 +78,7 @@ export function useCssVars(
   onMounted(() => {
     // 首次挂载后同步执行一次，后续变化则走 post-flush watch。
     watch(setVars, NOOP, { flush: 'post' })
+    // 父容器子节点结构若因 Teleport / Fragment 等变化发生调整，也要重刷变量归属。
     const ob = new MutationObserver(setVars)
     ob.observe(instance.subTree.el!.parentNode, { childList: true })
     onUnmounted(() => ob.disconnect())
@@ -84,6 +89,14 @@ export function useCssVars(
  * 作用：沿着 vnode 结构把 CSS 变量下发到真正的元素节点。
  */
 function setVarsOnVNode(vnode: VNode, vars: Record<string, unknown>) {
+  /**
+   * 沿 vnode 树找到真正的宿主节点并写入 CSS 变量。
+   *
+   * 主要功能：
+   * - 处理 Suspense activeBranch
+   * - 跳过高阶组件外壳，深入实际子树
+   * - 兼容 Fragment / Static 多节点结构
+   */
   if (__FEATURE_SUSPENSE__ && vnode.shapeFlag & ShapeFlags.SUSPENSE) {
     const suspense = vnode.suspense!
     vnode = suspense.activeBranch!
@@ -117,6 +130,14 @@ function setVarsOnVNode(vnode: VNode, vars: Record<string, unknown>) {
  * 作用：把一组 CSS 变量直接写到某个真实 DOM 节点的 style 上。
  */
 function setVarsOnNode(el: Node, vars: Record<string, unknown>) {
+  /**
+   * 把一组 CSS 变量写到单个真实节点上。
+   *
+   * 主要功能：
+   * - 仅处理元素节点
+   * - 把每个变量写成 `--key: value`
+   * - 额外缓存一份纯变量文本，供 `patchStyle()` 后续整段覆盖 style 时拼回去
+   */
   if (el.nodeType === 1) {
     const style = (el as HTMLElement).style
     // `cssText` 额外缓存一份纯变量文本，后续 `patchStyle` 整段覆盖时会把它拼回去。

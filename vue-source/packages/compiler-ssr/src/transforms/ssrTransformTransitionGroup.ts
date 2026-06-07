@@ -11,9 +11,9 @@ import {
 } from '@vue-source/compiler-dom'
 import { SSR_RENDER_ATTRS } from '../runtimeHelpers'
 import {
-  type SSRTransformContext,
   processChildren,
-} from '../ssrCodegenTransform'
+} from '../ssrTransformContext'
+import type { SSRTransformContext } from '../ssrTransformTypes'
 import { buildSSRProps } from './ssrTransformElement'
 
 const wipMap = new WeakMap<ComponentNode, WIPEntry>()
@@ -32,6 +32,8 @@ export function ssrTransformTransitionGroup(
   return (): void => {
     const tag = findProp(node, 'tag')
     if (tag) {
+      // TransitionGroup 自己的 props 需要先单独抽出来，
+      // 第二阶段再决定外层包裹标签怎么输出。
       const otherProps = node.props.filter(p => p !== tag)
       const { props, directives } = buildProps(
         node,
@@ -66,6 +68,7 @@ export function ssrProcessTransitionGroup(
     const { tag, propsExp, scopeId } = entry
     if (tag.type === NodeTypes.DIRECTIVE) {
       // dynamic :tag
+      // 动态 tag 编译期拿不到最终标签名，只能把开始/结束标签拆开按表达式输出。
       context.pushStringPart(`<`)
       context.pushStringPart(tag.exp!)
       if (propsExp) {
@@ -100,6 +103,8 @@ export function ssrProcessTransitionGroup(
       context.pushStringPart(`>`)
     } else {
       // static tag
+      // 静态 tag 就是普通字符串包裹，但 children 仍要按 TransitionGroup 的
+      // “扁平 fragment”语义处理。
       context.pushStringPart(`<${tag.value!.content}`)
       if (propsExp) {
         context.pushStringPart(propsExp)
@@ -113,6 +118,7 @@ export function ssrProcessTransitionGroup(
     }
   } else {
     // fragment
+    // 没有 tag 时，TransitionGroup 自身不输出包裹元素，只输出扁平 children。
     processChildren(node, context, true, true, true)
   }
 }

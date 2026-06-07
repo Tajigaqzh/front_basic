@@ -1,8 +1,13 @@
 /**
- * 文件作用：处理某一类 DOM 属性写入。
+ * 文件作用：处理运行时 `style` 属性更新。
  *
- * 当前文件 style.ts 专门负责一类浏览器属性更新策略，
- * 让 patchProp 可以把总分发继续下沉到更细的实现里。
+ * 这份文件负责把 vnode 上声明的样式值同步到真实 DOM，
+ * 并处理：
+ * - 对象样式和字符串样式的差异更新
+ * - 自动前缀补全
+ * - `!important`
+ * - CSS 变量
+ * - 与 `v-show` 的 display 协同
  */
 
 import { capitalize, hyphenate, isArray, isString } from '@vue-source/shared'
@@ -125,6 +130,20 @@ function setStyle(
   name: string,
   val: string | string[],
 ) {
+  /**
+   * 写入单个样式项。
+   *
+   * 主要功能：
+   * - 支持数组回退值
+   * - 支持 CSS 自定义属性
+   * - 支持浏览器前缀探测
+   * - 支持 `!important`
+   *
+   * 参数：
+   * - `style`：目标元素的样式对象
+   * - `name`：样式名
+   * - `val`：样式值，允许字符串数组作为回退序列
+   */
   if (isArray(val)) {
     val.forEach(v => setStyle(style, name, v))
   } else {
@@ -163,6 +182,17 @@ const prefixCache: Record<string, string> = {}
  * 作用：为运行时样式名找到浏览器可识别的最终字段名。
  */
 function autoPrefix(style: CSSStyleDeclaration, rawName: string): string {
+  /**
+   * 为样式名探测浏览器支持的最终字段名。
+   *
+   * 例如：
+   * - `user-select`
+   * 可能会被转成：
+   * - `userSelect`
+   * - `WebkitUserSelect`
+   *
+   * 结果会缓存到 `prefixCache`，避免同一种样式名每次都重复探测。
+   */
   const cached = prefixCache[rawName]
   if (cached) {
     return cached
@@ -190,6 +220,13 @@ function shouldPreserveTextareaResizeStyle(
   prev: string | string[] | undefined,
   next: string | string[],
 ): boolean {
+  /**
+   * 判断是否应该保留 textarea 原生 resize 后形成的宽高。
+   *
+   * 为什么存在：
+   * - 用户拖拽 textarea 改变尺寸后，浏览器会写入实际渲染尺寸
+   * - 如果前后绑定值没变，运行时不应该把浏览器刚生成的尺寸再覆盖掉
+   */
   return (
     el.tagName === 'TEXTAREA' &&
     (key === 'width' || key === 'height') &&

@@ -1,3 +1,4 @@
+// 文本合并 transform 类型。
 import type { NodeTransform } from '../transform'
 import {
   type CallExpression,
@@ -13,8 +14,9 @@ import { CREATE_TEXT } from '../runtimeHelpers'
 import { PatchFlagNames, PatchFlags } from '@vue-source/shared'
 import { getConstantType } from './cacheStatic'
 
-// Merge adjacent text nodes and expressions into a single expression
-// e.g. <div>abc {{ d }} {{ e }}</div> should have a single expression node as child.
+// 合并相邻文本节点和插值表达式。
+// 例如 `<div>abc {{ d }} {{ e }}</div>` 会先被压成一个复合文本表达式，
+// 再按需要预转成 createTextVNode(...)。
 export const transformText: NodeTransform = (node, context) => {
   if (
     node.type === NodeTypes.ROOT ||
@@ -25,6 +27,7 @@ export const transformText: NodeTransform = (node, context) => {
     // perform the transform on node exit so that all expressions have already
     // been processed.
     return () => {
+      // 放在退出阶段做，这样插值和其他表达式节点都已经是最终形态。
       const children = node.children
       let currentContainer: CompoundExpressionNode | undefined = undefined
       let hasText = false
@@ -37,6 +40,7 @@ export const transformText: NodeTransform = (node, context) => {
             const next = children[j]
             if (isText(next)) {
               if (!currentContainer) {
+                // 把连续文本/插值合并成一个复合表达式，如 `foo + bar + baz`。
                 currentContainer = children[i] = createCompoundExpression(
                   [child],
                   child.loc,
@@ -79,11 +83,13 @@ export const transformText: NodeTransform = (node, context) => {
               // converted into vnodes.
               !(__COMPAT__ && node.tag === 'template'))))
       ) {
+        // 单根普通文本元素保留原状，运行时有直接写 textContent 的快路径。
         return
       }
 
       // pre-convert text nodes into createTextVNode(text) calls to avoid
       // runtime normalization.
+      // 这里提前包成 TextCall，避免运行时再做 children 归一化。
       for (let i = 0; i < children.length; i++) {
         const child = children[i]
         if (isText(child) || child.type === NodeTypes.COMPOUND_EXPRESSION) {
@@ -98,6 +104,7 @@ export const transformText: NodeTransform = (node, context) => {
             !context.ssr &&
             getConstantType(child, context) === ConstantTypes.NOT_CONSTANT
           ) {
+            // 动态文本需要打上 TEXT patch flag，运行时才能在 block 内精确更新。
             callArgs.push(
               PatchFlags.TEXT +
                 (__DEV__ ? ` /* ${PatchFlagNames[PatchFlags.TEXT]} */` : ``),

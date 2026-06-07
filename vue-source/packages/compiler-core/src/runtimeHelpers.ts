@@ -84,6 +84,8 @@ export const IS_MEMO_SAME: unique symbol = Symbol(__DEV__ ? `isMemoSame` : ``)
 // Name mapping for runtime helpers that need to be imported from 'vue' in
 // generated code. Make sure these are correctly exported in the runtime!
 export const helperNameMap: Record<symbol, string> = {
+  // transform/codegen 阶段内部只操作 symbol，
+  // 真正生成代码时再通过这张表映射到运行时 helper 名称。
   [FRAGMENT]: `Fragment`,
   [TELEPORT]: `Teleport`,
   [SUSPENSE]: `Suspense`,
@@ -126,6 +128,7 @@ export const helperNameMap: Record<symbol, string> = {
 }
 
 export function registerRuntimeHelpers(helpers: Record<symbol, string>): void {
+  // 平台编译器可以在这里注册额外 helper，例如 DOM/SSR 专属运行时能力。
   Object.getOwnPropertySymbols(helpers).forEach(s => {
     helperNameMap[s] = helpers[s]
   })

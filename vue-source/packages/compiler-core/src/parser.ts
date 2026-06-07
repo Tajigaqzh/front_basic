@@ -68,6 +68,7 @@ export type MergedParserOptions = Omit<
   Pick<ParserOptions, OptionalOptions>
 
 export const defaultParserOptions: MergedParserOptions = {
+  // 基础 HTML 解析模式。
   parseMode: 'base',
   ns: Namespaces.HTML,
   delimiters: [`{{`, `}}`],
@@ -97,6 +98,8 @@ let inVPre = false
 let currentVPreBoundary: ElementNode | null = null
 const stack: ElementNode[] = []
 
+// parser 本质上是一个由 tokenizer 驱动的事件式状态机：
+// tokenizer 负责扫描字符，parser 在回调里把片段组装成 AST。
 const tokenizer = new Tokenizer(stack, {
   onerr: emitError,
 
@@ -110,6 +113,7 @@ const tokenizer = new Tokenizer(stack, {
 
   oninterpolation(start, end) {
     if (inVPre) {
+      // v-pre 内部不解析插值语法，按普通文本保留。
       return onText(getSlice(start, end), start, end)
     }
     let innerStart = start + tokenizer.delimiterOpen.length
@@ -131,6 +135,7 @@ const tokenizer = new Tokenizer(stack, {
     }
     addNode({
       type: NodeTypes.INTERPOLATION,
+      // 插值节点内部包的是表达式节点，后续 transformExpression 会继续处理。
       content: createExp(exp, false, getLoc(innerStart, innerEnd)),
       loc: getLoc(start, end),
     })
@@ -138,6 +143,7 @@ const tokenizer = new Tokenizer(stack, {
 
   onopentagname(start, end) {
     const name = getSlice(start, end)
+    // 这里只创建“当前正在解析的开始标签”，真正入树在 endOpenTag 中完成。
     currentOpenTag = {
       type: NodeTypes.ELEMENT,
       tag: name,
@@ -163,6 +169,7 @@ const tokenizer = new Tokenizer(stack, {
         if (e.tag.toLowerCase() === name.toLowerCase()) {
           found = true
           if (i > 0) {
+            // 找到了匹配标签，但上面还有没闭合的标签，说明模板结构缺失结束标签。
             emitError(ErrorCodes.X_MISSING_END_TAG, stack[0].loc.start.offset)
           }
           for (let j = 0; j <= i; j++) {
@@ -200,6 +207,7 @@ const tokenizer = new Tokenizer(stack, {
 
   ondirname(start, end) {
     const raw = getSlice(start, end)
+    // 把 `:` / `@` / `#` / `v-xxx` 统一映射成内部指令名。
     const name =
       raw === '.' || raw === ':'
         ? 'bind'
@@ -214,6 +222,7 @@ const tokenizer = new Tokenizer(stack, {
     }
 
     if (inVPre || name === '') {
+      // v-pre 模式下，保留原始字面量，不按指令处理。
       currentProp = {
         type: NodeTypes.ATTRIBUTE,
         name: raw,
@@ -232,6 +241,8 @@ const tokenizer = new Tokenizer(stack, {
         loc: getLoc(start),
       }
       if (name === 'pre') {
+        // 一旦进入 v-pre，当前标签上之前已经识别出的 directive
+        // 也要回退成普通 attribute，避免后续 transform 再处理它们。
         inVPre = tokenizer.inVPre = true
         currentVPreBoundary = currentOpenTag
         // convert dirs before this one to attributes
@@ -253,6 +264,7 @@ const tokenizer = new Tokenizer(stack, {
       setLocEnd((currentProp as AttributeNode).nameLoc, end)
     } else {
       const isStatic = arg[0] !== `[`
+      // `:[foo]` 是动态参数，内部内容会被当成 JS 表达式继续处理。
       ;(currentProp as DirectiveNode).arg = createExp(
         isStatic ? arg : arg.slice(1, -1),
         isStatic,
@@ -357,6 +369,7 @@ const tokenizer = new Tokenizer(stack, {
           // directive
           let expParseMode = ExpParseMode.Normal
           if (!__BROWSER__) {
+            // 不同指令的值语法不同，需要切换表达式解析模式。
             if (currentProp.name === 'for') {
               expParseMode = ExpParseMode.Skip
             } else if (currentProp.name === 'slot') {
@@ -376,6 +389,7 @@ const tokenizer = new Tokenizer(stack, {
             expParseMode,
           )
           if (currentProp.name === 'for') {
+            // 额外预解析 v-for，拆出 source / value / key / index。
             currentProp.forParseResult = parseForExpression(currentProp.exp)
           }
           // 2.x compat v-bind:foo.sync -> v-model:foo
@@ -464,6 +478,7 @@ const tokenizer = new Tokenizer(stack, {
       }
     }
     for (let index = 0; index < stack.length; index++) {
+      // EOF 时栈里仍未闭合的元素会被补关，并上报缺失结束标签错误。
       onCloseTag(stack[index], end - 1)
       emitError(ErrorCodes.X_MISSING_END_TAG, stack[index].loc.start.offset)
     }
@@ -496,6 +511,7 @@ const stripParensRE = /^\(|\)$/g
 function parseForExpression(
   input: SimpleExpressionNode,
 ): ForParseResult | undefined {
+  // 把 `item, key, index in list` 解析成结构化结果，供 v-for transform 使用。
   const loc = input.loc
   const exp = input.content
   const inMatch = exp.match(forAliasRE)
@@ -575,6 +591,7 @@ function endOpenTag(end: number) {
     // in SFC mode, generate locations for root-level tags' inner content.
     currentOpenTag!.innerLoc = getLoc(end + 1, end + 1)
   }
+  // 开始标签完整结束后，当前元素节点才真正加入父节点 children。
   addNode(currentOpenTag!)
   const { tag, ns } = currentOpenTag!
   if (ns === Namespaces.HTML && currentOptions.isPreTag(tag)) {
@@ -601,6 +618,7 @@ function onText(content: string, start: number, end: number) {
   const parent = stack[0] || currentRoot
   const lastNode = parent.children[parent.children.length - 1]
   if (lastNode && lastNode.type === NodeTypes.TEXT) {
+    // 连续文本在 parse 阶段就合并，减少后续 transform/codegen 的处理成本。
     // merge
     lastNode.content += content
     setLocEnd(lastNode.loc, end)
@@ -614,6 +632,7 @@ function onText(content: string, start: number, end: number) {
 }
 
 function onCloseTag(el: ElementNode, end: number, isImplied = false) {
+  // 结束标签阶段会补齐位置信息，并最终确定元素的 tagType。
   // attach end position
   if (isImplied) {
     // implied close, end should be backtracked to close

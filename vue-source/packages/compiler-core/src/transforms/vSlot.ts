@@ -1,4 +1,5 @@
 import {
+  // slots 相关 JS AST 类型与构建函数。
   type CallExpression,
   type ConditionalExpression,
   type DirectiveNode,
@@ -20,9 +21,11 @@ import {
   createObjectProperty,
   createSimpleExpression,
 } from '../ast'
+// transform 相关类型。
 import type { NodeTransform, TransformContext } from '../transform'
 import { ErrorCodes, createCompilerError } from '../errors'
 import {
+  // slot 相关 AST / 作用域判断工具。
   assert,
   findDir,
   hasScopeRef,
@@ -32,10 +35,13 @@ import {
   isVSlot,
   isWhitespaceText,
 } from '../utils'
+// slots 运行时 helper。
 import { CREATE_SLOTS, RENDER_LIST, WITH_CTX } from '../runtimeHelpers'
+// v-for 相关复用逻辑。
 import { createForLoopParams, finalizeForParseResult } from './vFor'
 import { SlotFlags, slotFlagsText } from '@vue-source/shared'
 
+// 动态插槽条件不命中时的兜底值。
 const defaultFallback = createSimpleExpression(`undefined`, false)
 
 // A NodeTransform that:
@@ -57,6 +63,7 @@ export const trackSlotScopes: NodeTransform = (node, context) => {
     if (vSlot) {
       const slotProps = vSlot.exp
       if (!__BROWSER__ && context.prefixIdentifiers) {
+        // slot props 会引入新的局部变量，例如 `{ item }`，不能被误改写成 `_ctx.item`。
         slotProps && context.addIdentifiers(slotProps)
       }
       context.scopes.vSlot++
@@ -81,6 +88,7 @@ export const trackVForSlotScopes: NodeTransform = (node, context) => {
   ) {
     const result = vFor.forParseResult
     if (result) {
+      // `<template v-slot v-for="item in list">` 同时引入 slot 作用域和 v-for 作用域。
       finalizeForParseResult(result, context)
       const { value, key, index } = result
       const { addIdentifiers, removeIdentifiers } = context
@@ -104,6 +112,7 @@ export type SlotFnBuilder = (
   loc: SourceLocation,
 ) => FunctionExpression
 
+// 默认 slot 函数构建器：把 slot 内容包成函数表达式。
 const buildClientSlotFn: SlotFnBuilder = (props, _vForExp, children, loc) =>
   createFunctionExpression(
     props,
@@ -123,6 +132,8 @@ export function buildSlots(
   slots: SlotsExpression
   hasDynamicSlots: boolean
 } {
+  // buildSlots 负责把组件子节点整理成 slots 对象，
+  // 最终形态大致是 `{ default: () => [...], foo: (props) => [...] }`。
   context.helper(WITH_CTX)
 
   const { children, loc } = node
@@ -137,6 +148,7 @@ export function buildSlots(
   // 1. the slot arg or exp uses the scope variables.
   // 2. the slot children use the scope variables.
   if (!__BROWSER__ && !context.ssr && context.prefixIdentifiers) {
+    // prefixIdentifiers 模式下可以更精确分析 slot 是否引用了外层作用域。
     hasDynamicSlots =
       node.props.some(
         prop =>
@@ -150,6 +162,7 @@ export function buildSlots(
   //    <Comp v-slot="{ prop }"/>
   const onComponentSlot = findDir(node, 'slot', true)
   if (onComponentSlot) {
+    // 组件自身上的 `v-slot` 等价于默认插槽定义。
     const { arg, exp } = onComponentSlot
     if (arg && !isStaticExp(arg)) {
       hasDynamicSlots = true
@@ -179,6 +192,7 @@ export function buildSlots(
       !(slotDir = findDir(slotElement, 'slot', true))
     ) {
       // not a <template v-slot>, skip.
+      // 非 `<template v-slot>` 子节点后面可能会并入隐式默认插槽。
       if (slotElement.type !== NodeTypes.COMMENT) {
         implicitDefaultChildren.push(slotElement)
       }
@@ -206,6 +220,7 @@ export function buildSlots(
     if (isStaticExp(slotName)) {
       staticSlotName = slotName ? slotName.content : `default`
     } else {
+      // 动态插槽名天然需要走动态 slots 分支。
       hasDynamicSlots = true
     }
 
@@ -216,6 +231,7 @@ export function buildSlots(
     let vIf: DirectiveNode | undefined
     let vElse: DirectiveNode | undefined
     if ((vIf = findDir(slotElement, 'if'))) {
+      // `<template v-slot v-if>` 会编译成条件插槽分支。
       hasDynamicSlots = true
       dynamicSlots.push(
         createConditionalExpression(
@@ -227,6 +243,7 @@ export function buildSlots(
     } else if (
       (vElse = findDir(slotElement, /^else(?:-if)?$/, true /* allowEmpty */))
     ) {
+      // `v-else(-if)` 需要回连到前一个动态 slot 条件表达式上。
       // find adjacent v-if
       let j = i
       let prev
@@ -264,6 +281,7 @@ export function buildSlots(
         )
       }
     } else if (vFor) {
+      // `<template v-slot v-for>` 最终会变成 renderList(...) 产出的动态 slot 数组。
       hasDynamicSlots = true
       const parseResult = vFor.forParseResult
       if (parseResult) {
@@ -305,6 +323,7 @@ export function buildSlots(
           hasNamedDefaultSlot = true
         }
       }
+      // 普通静态命名插槽直接记到 slotsProperties 对象里。
       slotsProperties.push(createObjectProperty(slotName, slotFunction))
     }
   }
@@ -322,6 +341,7 @@ export function buildSlots(
     }
 
     if (!hasTemplateSlots) {
+      // 没有显式 `<template v-slot>` 时，组件 children 直接视为默认插槽。
       // implicit default slot (on component)
       slotsProperties.push(buildDefaultSlotProperty(undefined, children))
     } else if (
@@ -331,6 +351,7 @@ export function buildSlots(
       // implicitDefaultChildren. Ignore if all implicit children are whitespaces.
       !implicitDefaultChildren.every(isWhitespaceText)
     ) {
+      // 命名插槽和隐式默认插槽混用时，这里处理默认插槽的兜底归并。
       // implicit default slot (mixed with named slots)
       if (hasNamedDefaultSlot) {
         context.onError(
@@ -352,6 +373,7 @@ export function buildSlots(
     : hasForwardedSlots(node.children)
       ? SlotFlags.FORWARDED
       : SlotFlags.STABLE
+  // 最终 slots 对象会附带 `_` 标记，告诉 runtime 当前 slots 稳定性。
   let slots = createObjectExpression(
     slotsProperties.concat(
       createObjectProperty(
@@ -367,6 +389,7 @@ export function buildSlots(
     loc,
   ) as SlotsExpression
   if (dynamicSlots.length) {
+    // 动态 slot 不直接塞进对象，而是交给 createSlots(staticSlots, dynamicSlots)。
     slots = createCallExpression(context.helper(CREATE_SLOTS), [
       slots,
       createArrayExpression(dynamicSlots),
@@ -384,6 +407,7 @@ function buildDynamicSlot(
   fn: FunctionExpression,
   index?: number,
 ): ObjectExpression {
+  // 动态 slot 的单项结构形如 `{ name, fn, key? }`。
   const props = [
     createObjectProperty(`name`, name),
     createObjectProperty(`fn`, fn),
@@ -397,6 +421,7 @@ function buildDynamicSlot(
 }
 
 function hasForwardedSlots(children: TemplateChildNode[]): boolean {
+  // 如果 slot 被继续透传给更深层组件，则当前 slots 不能视为完全静态。
   for (let i = 0; i < children.length; i++) {
     const child = children[i]
     switch (child.type) {

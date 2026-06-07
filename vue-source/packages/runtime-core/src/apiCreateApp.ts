@@ -246,22 +246,33 @@ export function createAppContext(): AppContext {
    * - `optionsCache / propsCache / emitsCache` 会被后续组件初始化复用
    */
   return {
+    // `app` 会在 createApp 阶段回填成真正的应用实例，方便上下文与应用对象互相引用。
     app: null as any,
     config: {
+      // 默认先认为没有任何宿主原生标签识别能力，具体平台会在运行时再覆写。
       isNativeTag: NO,
       performance: false,
+      // 所有组件实例代理都可共享读取的全局属性表。
       globalProperties: {},
+      // 组件选项合并策略注册表，供内置选项与用户自定义选项复用。
       optionMergeStrategies: {},
       errorHandler: undefined,
       warnHandler: undefined,
       compilerOptions: {},
     },
+    // 全局 mixin 列表，会在当前 app 下每个组件的选项解析时参与合并。
     mixins: [],
+    // 全局组件注册表，模板里的字符串组件名最终会查到这里。
     components: {},
+    // 全局指令注册表，运行时解析指令时会从这里查找定义。
     directives: {},
+    // 应用级 provide 根对象，根组件以及所有后代 inject 都会沿这条链读取。
     provides: Object.create(null),
+    // 组件 options 合并缓存，避免相同组件定义反复 merge。
     optionsCache: new WeakMap(),
+    // props 归一化缓存，避免相同组件定义重复解析 props。
     propsCache: new WeakMap(),
+    // emits 归一化缓存，避免相同组件定义重复解析 emits。
     emitsCache: new WeakMap(),
   }
 }
@@ -292,10 +303,12 @@ export function createAppAPI<HostElement>(
   hydrate?: RootHydrateFunction,
 ): CreateAppFunction<HostElement> {
   return function createApp(rootComponent, rootProps = null) {
+    // 对象组件定义会先浅拷贝一份，避免对应用级定义做兼容/扩展时污染用户原对象。
     if (!isFunction(rootComponent)) {
       rootComponent = extend({}, rootComponent)
     }
 
+    // 根 props 必须是对象；否则后续 vnode/组件初始化都无法按 props 语义处理。
     if (rootProps != null && !isObject(rootProps)) {
       rootProps = null
     }
@@ -364,11 +377,14 @@ export function createAppAPI<HostElement>(
        * - `options`：传给插件的剩余参数
        */
       use(plugin: Plugin, ...options: any[]) {
+        // `installedPlugins` 保证同一个插件对象/函数在当前 app 上只安装一次。
         if (!installedPlugins.has(plugin) && plugin && isFunction(plugin.install)) {
           installedPlugins.add(plugin)
+          // 对象插件遵循标准 `install(app, ...options)` 协议。
           plugin.install(app, ...options)
         } else if (!installedPlugins.has(plugin) && isFunction(plugin)) {
           installedPlugins.add(plugin)
+          // 函数插件直接把自身当安装函数执行。
           plugin(app, ...options)
         }
         return app
@@ -383,6 +399,7 @@ export function createAppAPI<HostElement>(
        */
       mixin(mixin: ComponentOptions) {
         if (__FEATURE_OPTIONS_API__) {
+          // 全局 mixin 会影响当前 app 下每个组件的选项合并，因此需要去重。
           if (!context.mixins.includes(mixin)) {
             context.mixins.push(mixin)
           }
@@ -398,9 +415,11 @@ export function createAppAPI<HostElement>(
        * - `component`：可选；传入时表示注册，不传时表示读取
        */
       component(name: string, component?: Component): any {
+        // 读写都直接落在 `appContext.components`，后续组件解析时会从这里取全局注册。
         if (!component) {
           return context.components[name]
         }
+        // 这里只登记定义；真正实例化发生在 renderer 为 vnode 创建组件实例时。
         context.components[name] = component
         return app
       },
@@ -413,9 +432,11 @@ export function createAppAPI<HostElement>(
        * - `directive`：可选；传入时表示注册，不传时表示读取
        */
       directive(name: string, directive?: Directive) {
+        // 全局指令表同样挂在 appContext 上，render 期间的 `resolveDirective()` 会读取这里。
         if (!directive) {
           return context.directives[name] as any
         }
+        // 指令生命周期要等到 patch 阶段命中真实节点时才会执行。
         context.directives[name] = directive
         return app
       },
@@ -444,6 +465,7 @@ export function createAppAPI<HostElement>(
         namespace?: boolean | ElementNamespace,
       ): any {
         if (!isMounted) {
+          // `vnode` 是整棵应用的根 vnode，也是后续根组件实例创建的直接输入。
           const vnode = app._ceVNode || createVNode(rootComponent, rootProps)
           // store app context on the root VNode.
           // this will be set on the root instance on initial mount.
@@ -456,8 +478,10 @@ export function createAppAPI<HostElement>(
           }
 
           if (isHydrate && hydrate) {
+            // SSR 激活不会新建 DOM，而是把现有 DOM 与 vnode/组件实例绑定起来。
             hydrate(vnode as VNode<Node, Element>, rootContainer as any)
           } else {
+            // 客户端首挂载会从这里进入 renderer.patch 的完整创建流程。
             render(vnode, rootContainer, namespace)
           }
           isMounted = true
@@ -481,6 +505,7 @@ export function createAppAPI<HostElement>(
        * - 让插件或宿主层可以在应用销毁时释放资源
        */
       onUnmount(cleanupFn: () => void) {
+        // 这里只做登记，真正执行时机统一由 `app.unmount()` 控制。
         pluginCleanupFns.push(cleanupFn)
       },
 
@@ -494,11 +519,13 @@ export function createAppAPI<HostElement>(
        */
       unmount() {
         if (isMounted) {
+          // 先清理由插件/宿主注册的副作用，再卸载组件树，避免组件资源已销毁后无法清理。
           callWithAsyncErrorHandling(
             pluginCleanupFns,
             app._instance,
             ErrorCodes.APP_UNMOUNT_CLEANUP,
           )
+          // 传入 null 是渲染器层统一的“整棵树卸载”入口。
           render(null, app._container)
           if (__DEV__ || __FEATURE_PROD_DEVTOOLS__) {
             app._instance = null
@@ -515,6 +542,7 @@ export function createAppAPI<HostElement>(
        * - 让根级别提供的数据可以被整棵应用树后代 `inject()`
        */
       provide(key, value) {
+        // 根级 provide 直接写入应用上下文，所有后代组件 inject 时都能沿 appContext 命中它。
         context.provides[key as string | symbol] = value
 
         return app
@@ -530,6 +558,7 @@ export function createAppAPI<HostElement>(
        * - `fn`：需要在当前 app 上下文里执行的函数
        */
       runWithContext(fn) {
+        // `currentApp` 只在当前同步调用链内临时切换，确保 `inject()` 能读到当前 app.provides。
         const lastApp = currentApp
         currentApp = app
         try {
@@ -552,4 +581,5 @@ export function createAppAPI<HostElement>(
  * @internal Used to identify the current app when using `inject()` within
  * `app.runWithContext()`.
  */
+// `currentApp` 是“非组件上下文下的当前应用”指针，主要服务 `app.runWithContext()` + `inject()`。
 export let currentApp: App<unknown> | null = null

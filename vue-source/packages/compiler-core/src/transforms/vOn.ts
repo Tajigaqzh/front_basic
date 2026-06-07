@@ -39,6 +39,7 @@ export const transformOn: DirectiveTransform = (
   let eventName: ExpressionNode
   if (arg.type === NodeTypes.SIMPLE_EXPRESSION) {
     if (arg.isStatic) {
+      // 静态事件名直接在编译期转成 onClick / onUpdate:modelValue 这类属性名。
       let rawName = arg.content
       if (__DEV__ && rawName.startsWith('vnode')) {
         context.onError(createCompilerError(ErrorCodes.X_VNODE_HOOKS, arg.loc))
@@ -58,6 +59,7 @@ export const transformOn: DirectiveTransform = (
             `on:${rawName}`
       eventName = createSimpleExpression(eventString, true, arg.loc)
     } else {
+      // 动态事件名运行时再通过 toHandlerKey() 计算。
       // #2388
       eventName = createCompoundExpression([
         `${context.helperString(TO_HANDLER_KEY)}(`,
@@ -73,6 +75,7 @@ export const transformOn: DirectiveTransform = (
   }
 
   // handler processing
+  // 这里负责把用户写的表达式归一化成真正传给 VNode props 的事件处理函数。
   let exp: ExpressionNode | undefined = dir.exp as
     | SimpleExpressionNode
     | undefined
@@ -87,6 +90,7 @@ export const transformOn: DirectiveTransform = (
 
     // process the expression since it's been skipped
     if (!__BROWSER__ && context.prefixIdentifiers) {
+      // v-on:arg 的表达式不会走普通 transformExpression，这里手动补做一次。
       isInlineStatement && context.addIdentifiers(`$event`)
       exp = dir.exp = processExpression(
         exp,
@@ -136,6 +140,7 @@ export const transformOn: DirectiveTransform = (
     }
 
     if (isInlineStatement || (shouldCache && isMemberExp)) {
+      // 内联语句最终都要包成箭头函数，才能成为合法的事件处理器。
       // wrap inline statement in a function expression
       exp = createCompoundExpression([
         `${
@@ -168,6 +173,7 @@ export const transformOn: DirectiveTransform = (
   }
 
   if (shouldCache) {
+    // 可缓存时，包一层 cache，避免每次渲染都创建新函数导致子组件无效更新。
     // cache handlers so that it's always the same handler being passed down.
     // this avoids unnecessary re-renders when users use inline handlers on
     // components.

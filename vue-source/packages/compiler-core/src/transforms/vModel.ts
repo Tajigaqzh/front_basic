@@ -40,6 +40,7 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
   const bindingType = context.bindingMetadata[rawExp]
 
   // check props
+  // v-model 需要可写目标，因此不能直接绑在 props 上。
   if (
     bindingType === BindingTypes.PROPS ||
     bindingType === BindingTypes.PROPS_ALIASED
@@ -49,6 +50,7 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
   }
 
   // const bindings are not writable.
+  // 常量同样不能作为 v-model 的赋值目标。
   if (
     bindingType === BindingTypes.LITERAL_CONST ||
     bindingType === BindingTypes.SETUP_CONST
@@ -65,6 +67,7 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
       bindingType === BindingTypes.SETUP_MAYBE_REF)
 
   if (!expString.trim() || (!isMemberExpression(exp, context) && !maybeRef)) {
+    // v-model 左侧必须是一个可赋值表达式，例如 `foo`、`obj.x`。
     context.onError(
       createCompilerError(ErrorCodes.X_V_MODEL_MALFORMED_EXPRESSION, exp.loc),
     )
@@ -94,6 +97,7 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
   const eventArg = context.isTS ? `($event: any)` : `$event`
   if (maybeRef) {
     if (bindingType === BindingTypes.SETUP_REF) {
+      // 已知是 ref 时，更新逻辑固定写回 `.value`。
       // v-model used on known ref.
       assignmentExp = createCompoundExpression([
         `${eventArg} => ((`,
@@ -101,6 +105,7 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
         `).value = $event)`,
       ])
     } else {
+      // 可能是 ref 也可能不是 ref 时，运行时先判断再决定写 `.value` 还是直接赋值。
       // v-model used on a potentially ref binding in <script setup> inline mode.
       // the assignment needs to check whether the binding is actually a ref.
       const altAssignment =
@@ -112,6 +117,7 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
       ])
     }
   } else {
+    // 普通成员表达式直接生成 `$event => (target = $event)`。
     assignmentExp = createCompoundExpression([
       `${eventArg} => ((`,
       exp,
@@ -134,11 +140,13 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
     context.cacheHandlers &&
     !hasScopeRef(exp, context.identifiers)
   ) {
+    // update 处理器稳定时可以缓存，避免重复创建函数。
     props[1].value = context.cache(props[1].value)
   }
 
   // modelModifiers: { foo: true, "bar-baz": true }
   if (dir.modifiers.length && node.tagType === ElementTypes.COMPONENT) {
+    // 组件上的 v-model 修饰符不会直接生效，而是通过额外 prop 传给子组件自己决定。
     const modifiers = dir.modifiers
       .map(m => m.content)
       .map(m => (isSimpleIdentifier(m) ? m : JSON.stringify(m)) + `: true`)

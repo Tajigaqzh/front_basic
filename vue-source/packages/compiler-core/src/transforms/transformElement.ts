@@ -1,3 +1,4 @@
+// 元素级 transform 的上下文和类型定义。
 import type { NodeTransform, TransformContext } from '../transform'
 import {
   type ArrayExpression,
@@ -65,15 +66,16 @@ import {
 } from '../compat/compatConfig'
 import { processExpression } from './transformExpression'
 
-// some directive transforms (e.g. v-model) may return a symbol for runtime
-// import, which should be used instead of a resolveDirective call.
+// 某些指令 transform（例如 v-model）返回的是 runtime helper symbol，
+// 这时后续应直接导入 helper，而不是走 resolveDirective。
 const directiveImportMap = new WeakMap<DirectiveNode, symbol>()
 
-// generate a JavaScript AST for this element's codegen
+// 给普通元素/组件元素生成 codegenNode，也就是最终的 VNodeCall。
 export const transformElement: NodeTransform = (node, context) => {
   // perform the work on exit, after all child expressions have been
   // processed and merged.
   return function postTransformElement() {
+    // 放在退出阶段执行，确保子节点、指令表达式、slot 等都已经处理完毕。
     node = context.currentNode!
 
     if (
@@ -91,10 +93,13 @@ export const transformElement: NodeTransform = (node, context) => {
 
     // The goal of the transform is to create a codegenNode implementing the
     // VNodeCall interface.
+    // vnodeTag 就是最终 createVNode/createBlock 的第一个参数。
+    // 元素节点是字符串标签名，组件节点则可能是 resolveXxx() 调用结果。
     let vnodeTag = isComponent
       ? resolveComponentType(node as ComponentNode, context)
       : `"${tag}"`
 
+    // 动态组件在运行时可能解析成普通元素，因此优化策略要更保守。
     const isDynamicComponent =
       isObject(vnodeTag) && vnodeTag.callee === RESOLVE_DYNAMIC_COMPONENT
 
@@ -119,6 +124,7 @@ export const transformElement: NodeTransform = (node, context) => {
 
     // props
     if (props.length > 0) {
+      // 统一分析属性和指令，产出 props 表达式、patchFlag 和运行时指令数组。
       const propsBuildResult = buildProps(
         node,
         context,
@@ -145,6 +151,7 @@ export const transformElement: NodeTransform = (node, context) => {
     // children
     if (node.children.length > 0) {
       if (vnodeTag === KEEP_ALIVE) {
+        // KeepAlive 使用原始 children，而不是普通组件那套 slot 函数包装逻辑。
         // Although a built-in component, we compile KeepAlive with raw children
         // instead of slot functions so that it can be used inside Transition
         // or other Transition-wrapping HOCs.
@@ -173,9 +180,11 @@ export const transformElement: NodeTransform = (node, context) => {
         vnodeTag !== KEEP_ALIVE
 
       if (shouldBuildAsSlots) {
+        // 组件子节点优先编译成 slots 对象，而不是普通 children 数组。
         const { slots, hasDynamicSlots } = buildSlots(node, context)
         vnodeChildren = slots
         if (hasDynamicSlots) {
+          // 动态 slot 需要运行时完整更新。
           patchFlag |= PatchFlags.DYNAMIC_SLOTS
         }
       } else if (node.children.length === 1 && vnodeTag !== TELEPORT) {
@@ -194,20 +203,25 @@ export const transformElement: NodeTransform = (node, context) => {
         // pass directly if the only child is a text node
         // (plain / interpolation / expression)
         if (hasDynamicTextChild || type === NodeTypes.TEXT) {
+          // 单个文本子节点可以直接内联，避免额外包数组。
           vnodeChildren = child as TemplateTextChildNode
         } else {
+          // 其余单子节点情况保留为 children 数组。
           vnodeChildren = node.children
         }
       } else {
+        // 多个子节点直接作为 children 数组传给 createVNode。
         vnodeChildren = node.children
       }
     }
 
     // patchFlag & dynamicPropNames
     if (dynamicPropNames && dynamicPropNames.length) {
+      // 运行时会根据这份动态 prop 名单做更精确的局部更新。
       vnodeDynamicProps = stringifyDynamicPropNames(dynamicPropNames)
     }
 
+    // 把当前元素的编译结果挂到 codegenNode，供 generate 阶段直接输出代码。
     node.codegenNode = createVNodeCall(
       context,
       vnodeTag,
@@ -232,6 +246,7 @@ export function resolveComponentType(
   let { tag } = node
 
   // 1. dynamic component
+  // `<component :is="x">` 或兼容模式里的 `is` 属性都走这里。
   const isExplicitDynamic = isComponentTag(tag)
   const isProp = findProp(node, 'is', false, true /* allow empty */)
   if (isProp) {
@@ -274,6 +289,7 @@ export function resolveComponentType(
   }
 
   // 2. built-in components (Teleport, Transition, KeepAlive, Suspense...)
+  // 内建组件不走普通 resolveComponent，而是直接映射到特定 runtime helper。
   const builtIn = isCoreComponent(tag) || context.isBuiltInComponent(tag)
   if (builtIn) {
     // built-ins are simply fallthroughs / have special handling during ssr
@@ -283,6 +299,7 @@ export function resolveComponentType(
   }
 
   // 3. user component (from setup bindings)
+  // `<Foo />` 也可能引用的是 setup 作用域变量，而不是注册组件。
   // this is skipped in browser build since browser builds do not perform
   // binding analysis.
   if (!__BROWSER__) {
@@ -300,6 +317,7 @@ export function resolveComponentType(
   }
 
   // 4. Self referencing component (inferred from filename)
+  // SFC 文件名和标签名一致时，允许组件隐式自引用。
   if (
     !__BROWSER__ &&
     context.selfName &&
@@ -314,12 +332,14 @@ export function resolveComponentType(
   }
 
   // 5. user component (resolve)
+  // 最后兜底为普通组件解析：运行时通过 resolveComponent("Foo") 获取。
   context.helper(RESOLVE_COMPONENT)
   context.components.add(tag)
   return toValidAssetId(tag, `component`)
 }
 
 function resolveSetupReference(name: string, context: TransformContext) {
+  // 只有 SFC/非浏览器编译链路才会提供 bindingMetadata。
   const bindings = context.bindingMetadata
   if (!bindings || bindings.__isScriptSetup === false) {
     return
@@ -344,6 +364,7 @@ function resolveSetupReference(name: string, context: TransformContext) {
     checkType(BindingTypes.SETUP_REACTIVE_CONST) ||
     checkType(BindingTypes.LITERAL_CONST)
   if (fromConst) {
+    // const / import 绑定可以直接访问。
     return context.inline
       ? // in inline mode, const setup bindings (e.g. imports) can be used as-is
         fromConst
@@ -355,6 +376,7 @@ function resolveSetupReference(name: string, context: TransformContext) {
     checkType(BindingTypes.SETUP_REF) ||
     checkType(BindingTypes.SETUP_MAYBE_REF)
   if (fromMaybeRef) {
+    // 可能是 ref 的 setup 绑定在 inline 模式下需要自动 unref。
     return context.inline
       ? // setup scope bindings that may be refs need to be unrefed
         `${context.helperString(UNREF)}(${fromMaybeRef})`
@@ -386,8 +408,11 @@ export function buildProps(
   shouldUseBlock: boolean
 } {
   const { tag, loc: elementLoc, children } = node
+  // 累积最终 props 对象的属性项。
   let properties: ObjectExpression['properties'] = []
+  // v-bind="obj" / v-on="obj" 这类整包合并的参数列表。
   const mergeArgs: PropsExpression[] = []
+  // 需要运行时执行的指令集合。
   const runtimeDirectives: DirectiveNode[] = []
   const hasChildren = children.length > 0
   let shouldUseBlock = false
@@ -403,6 +428,7 @@ export function buildProps(
   const dynamicPropNames: string[] = []
 
   const pushMergeArg = (arg?: PropsExpression) => {
+    // 把当前已收集的静态对象属性先封成 object expression，再进入 merge 分支。
     if (properties.length) {
       mergeArgs.push(
         createObjectExpression(dedupeProperties(properties), elementLoc),
@@ -414,6 +440,7 @@ export function buildProps(
 
   // mark template ref on v-for
   const pushRefVForMarker = () => {
+    // v-for 中的 ref 在运行时会形成 ref 数组，需要额外标记。
     if (context.scopes.vFor > 0) {
       properties.push(
         createObjectProperty(
@@ -425,6 +452,7 @@ export function buildProps(
   }
 
   const analyzePatchFlag = ({ key, value }: Property) => {
+    // patchFlag 的目标是告诉运行时：这个节点哪些部分可能变化。
     if (isStaticExp(key)) {
       const name = key.content
       const isEventHandler = isOn(name)
@@ -439,10 +467,12 @@ export function buildProps(
         // omit onVnodeXXX hooks
         !isReservedProp(name)
       ) {
+        // 除少数特殊事件外，原生事件通常需要 hydration 关注。
         hasHydrationEventBinding = true
       }
 
       if (isEventHandler && isReservedProp(name)) {
+        // onVnodeMounted 这类 vnode hook 也会触发补丁逻辑。
         hasVnodeHook = true
       }
 
@@ -458,6 +488,7 @@ export function buildProps(
           value.type === NodeTypes.COMPOUND_EXPRESSION) &&
           getConstantType(value, context) > 0)
       ) {
+        // 常量值或缓存处理器不算动态更新来源。
         // skip if the prop is a cached handler or has constant value
         return
       }
@@ -478,9 +509,11 @@ export function buildProps(
         (name === 'class' || name === 'style') &&
         !dynamicPropNames.includes(name)
       ) {
+        // 组件上的 class/style 在运行时也要作为动态 prop 对待。
         dynamicPropNames.push(name)
       }
     } else {
+      // 动态 key 只能退化成 FULL_PROPS。
       hasDynamicKeys = true
     }
   }

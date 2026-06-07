@@ -320,6 +320,9 @@ export interface VNode<
 // and only worry about the dynamic nodes (indicated by patch flags).
 export const blockStack: VNode['dynamicChildren'][] = []
 export let currentBlock: VNode['dynamicChildren'] = null
+// `blockStack` / `currentBlock` 共同维护“当前正在收集哪一个 block 的动态子节点”。
+// 编译器会把模板切成若干 block，运行时只把真正需要 patch 的节点放进这里，
+// 这样更新时就不必全量递归扫描整个子树。
 
 /**
  * Open a block.
@@ -338,10 +341,21 @@ export let currentBlock: VNode['dynamicChildren'] = null
  * @private
  */
 export function openBlock(disableTracking = false): void {
+  /**
+   * 打开一个 block 收集上下文。
+   *
+   * 主要功能：
+   * - 为接下来创建的一段 VNode 树准备 `dynamicChildren` 收集容器
+   * - 让编译优化后的 patch 可以只关注动态节点
+   *
+   * 参数：
+   * - `disableTracking`：是否禁用当前 block 的动态子节点收集，`v-for` Fragment 常见
+   */
   blockStack.push((currentBlock = disableTracking ? null : []))
 }
 
 export function closeBlock(): void {
+  // 退出当前 block，恢复到父级 block 的动态节点收集上下文。
   blockStack.pop()
   currentBlock = blockStack[blockStack.length - 1] || null
 }
@@ -369,6 +383,17 @@ export let isBlockTreeEnabled = 1
  * @private
  */
 export function setBlockTracking(value: number, inVOnce = false): void {
+  /**
+   * 临时调节 block 动态节点收集开关。
+   *
+   * 主要功能：
+   * - 在某些场景下暂停动态节点收集
+   * - 典型场景是 `v-once` 缓存树创建，避免把这段本应稳定的树再次记为动态节点
+   *
+   * 参数：
+   * - `value`：通常传 `1` 或 `-1`，通过累加计数支持嵌套开关
+   * - `inVOnce`：当前是否处在 `v-once` 生成逻辑里
+   */
   isBlockTreeEnabled += value
   if (value < 0 && currentBlock && inVOnce) {
     // mark current block so it doesn't take fast path and skip possible
@@ -378,6 +403,18 @@ export function setBlockTracking(value: number, inVOnce = false): void {
 }
 
 function setupBlock(vnode: VNode) {
+  /**
+   * 把一个 vnode 收尾为 block 根节点。
+   *
+   * 主要功能：
+   * - 把当前收集到的 `dynamicChildren` 挂到 block 根上
+   * - 关闭当前 block，恢复父级 block 上下文
+   * - 再把当前 block 根登记到父级 block 中
+   *
+   * 为什么要这样做：
+   * - block 是“局部稳定子树”的边界
+   * - patch 时只要拿到 block 根上的 `dynamicChildren`，就能直接走优化路径
+   */
   // save current block children on the block vnode
   vnode.dynamicChildren =
     isBlockTreeEnabled > 0 ? currentBlock || (EMPTY_ARR as any) : null
@@ -429,6 +466,13 @@ export function createBlock(
   patchFlag?: number,
   dynamicProps?: string[],
 ): VNode {
+  /**
+   * 创建 block 根节点。
+   *
+   * 与普通 `createVNode()` 的差别：
+   * - block 会额外挂上 `dynamicChildren`
+   * - 后续 patch 可以利用它跳过整段稳定子树
+   */
   return setupBlock(
     createVNode(
       type,
@@ -446,6 +490,16 @@ export function isVNode(value: any): value is VNode {
 }
 
 export function isSameVNodeType(n1: VNode, n2: VNode): boolean {
+  /**
+   * 判断两个 vnode 是否可以复用同一个宿主节点/组件实例。
+   *
+   * 判定标准非常严格：
+   * - `type` 相同
+   * - `key` 相同
+   *
+   * 只要其中一个不同，渲染器就会走卸载旧节点 + 挂载新节点，
+   * 因为它们已经不是“同一个位置上的同一个逻辑节点”。
+   */
   if (__DEV__ && n2.shapeFlag & ShapeFlags.COMPONENT && n1.component) {
     const dirtyInstances = hmrDirtyComponents.get(n2.type as ConcreteComponent)
     if (dirtyInstances && dirtyInstances.has(n1.component)) {
@@ -476,6 +530,7 @@ let vnodeArgsTransformer:
 export function transformVNodeArgs(
   transformer?: typeof vnodeArgsTransformer,
 ): void {
+  // 这是一个内部扩展点，主要给 test-utils / 兼容层在 createVNode 入参前做拦截改写。
   vnodeArgsTransformer = transformer
 }
 
@@ -497,6 +552,15 @@ const normalizeRef = ({
   ref_key,
   ref_for,
 }: VNodeProps): VNodeNormalizedRefAtom | null => {
+  /**
+   * 把用户写法多样的 ref 归一化成渲染器统一结构。
+   *
+   * 输出里的关键字段：
+   * - `i`：ref 所属组件实例，后续写回 refs 时要靠它找到 owner
+   * - `r`：原始 ref 描述，可能是字符串 / ref 对象 / 函数
+   * - `k`：编译器生成的 ref key，某些场景要额外挂到 `refs[key]`
+   * - `f`：是否来自 `ref_for`
+   */
   if (typeof ref === 'number') {
     ref = '' + ref
   }
@@ -519,7 +583,22 @@ function createBaseVNode(
   isBlockNode = false,
   needFullChildrenNormalization = false,
 ): VNode {
+  /**
+   * 创建最底层的 VNode 对象。
+   *
+   * 它是 `createVNode` 的基础实现，负责：
+   * - 组装 VNode 全字段结构
+   * - 处理 key/ref 归一化
+   * - 根据 children 形态补全 children 类型位
+   * - 在合适时机把当前 vnode 收集进父 block 的动态子节点列表
+   *
+   * 参数补充：
+   * - `isBlockNode`：当前 vnode 自己是不是 block 根；是的话不能把自己再次收进自己的动态列表
+   * - `needFullChildrenNormalization`：是否需要完整 children 归一化；编译产物某些路径可走更轻量分支
+   */
   const vnode = {
+    // 从这里开始，元素、组件、Fragment、Teleport 等各种节点
+    // 都被投影成统一的 VNode 数据结构，后续 patch 只需要面对这一种中间表示。
     __v_isVNode: true,
     __v_skip: true,
     type,
@@ -543,6 +622,8 @@ function createBaseVNode(
     staticCount: 0,
     shapeFlag,
     patchFlag,
+    // `dynamicProps` 只记录“编译器明确知道会动态变化的 prop 名”，
+    // patch 时可据此跳过无关 prop。
     dynamicProps,
     dynamicChildren: null,
     appContext: null,
@@ -584,6 +665,8 @@ function createBaseVNode(
     // vnode should not be considered dynamic due to handler caching.
     vnode.patchFlag !== PatchFlags.NEED_HYDRATION
   ) {
+    // 只有真正会参与后续更新的节点才会收进 block。
+    // 纯静态节点不记录，避免无意义地增加更新扫描成本。
     currentBlock.push(vnode)
   }
 
@@ -609,6 +692,19 @@ function _createVNode(
   dynamicProps: string[] | null = null,
   isBlockNode = false,
 ): VNode {
+  /**
+   * VNode 创建总入口。
+   *
+   * 主要功能：
+   * - 归一化组件类型
+   * - 归一化 props 中的 class / style / ref / key
+   * - 根据类型计算 `shapeFlag`
+   * - 进一步归一化 children
+   *
+   * 所在链路：
+   * - 编译产物中的 `createVNode / createElementBlock / createBlock`
+   * - 手写 render / `h()` 最终也会落到这里
+   */
   if (!type || type === NULL_DYNAMIC_COMPONENT) {
     if (__DEV__ && !type) {
       warn(`Invalid vnode type when creating vnode: ${type}.`)
@@ -625,6 +721,9 @@ function _createVNode(
       normalizeChildren(cloned, children)
     }
     if (isBlockTreeEnabled > 0 && !isBlockNode && currentBlock) {
+      // `<component :is="existingVNode" />` 这类场景会直接复用现成 vnode。
+      // 如果它本来就是组件，要把 block 里原位置替换成克隆后的 vnode，
+      // 保证后续 patch 使用的是这次 render 产出的最新节点对象。
       if (cloned.shapeFlag & ShapeFlags.COMPONENT) {
         currentBlock[currentBlock.indexOf(type)] = cloned
       } else {
@@ -647,6 +746,8 @@ function _createVNode(
 
   // class & style normalization.
   if (props) {
+    // class/style 在 vnode 创建阶段就先规范化，
+    // 目的是把 patch 热路径里的格式分支尽量前移。
     // for reactive or proxy objects, we need to clone it to enable mutation.
     props = guardReactiveProps(props)!
     let { class: klass, style } = props
@@ -663,7 +764,8 @@ function _createVNode(
     }
   }
 
-  // encode the vnode type information into a bitmap
+  // `shapeFlag` 是 vnode 大类位图。
+  // 后续 patch 依赖它快速判断这是元素、组件、Teleport 还是 Suspense。
   const shapeFlag = isString(type)
     ? ShapeFlags.ELEMENT
     : __FEATURE_SUSPENSE__ && isSuspense(type)
@@ -703,6 +805,8 @@ function _createVNode(
 export function guardReactiveProps(
   props: (Data & VNodeProps) | null,
 ): (Data & VNodeProps) | null {
+  // reactive/proxy 对象可能在后续归一化过程中被就地改写，
+  // 这里先浅拷贝一份，避免直接污染用户原始响应式对象。
   if (!props) return null
   return isProxy(props) || isInternalObject(props) ? extend({}, props) : props
 }
@@ -713,6 +817,20 @@ export function cloneVNode<T, U>(
   mergeRef = false,
   cloneTransition = false,
 ): VNode<T, U> {
+  /**
+   * 克隆一个 vnode。
+   *
+   * 主要功能：
+   * - 给现有 vnode 叠加额外 props
+   * - 在需要时合并 ref
+   * - 保留原 vnode 已经关联的宿主节点/组件实例引用
+   * - 某些场景下重新克隆 transition hooks，避免钩子里持有旧 vnode
+   *
+   * 常见调用链：
+   * - `<component :is="vnode" />`
+   * - slot / children 复用时的 vnode 保护性复制
+   * - keep-alive / transition / 编译优化路径
+   */
   // This is intentionally NOT using spread or extend to avoid the runtime
   // key enumeration cost.
   const { props, ref, patchFlag, children, transition } = vnode
@@ -799,6 +917,8 @@ export function cloneVNode<T, U>(
  * https://github.com/vitejs/vite/issues/2022
  */
 function deepCloneVNode(vnode: VNode): VNode {
+  // HMR 下被缓存/提升的 vnode 可能被多处复用，需要把 children 也深拷贝，
+  // 避免热更新时多个位置共享同一份子节点引用。
   const cloned = cloneVNode(vnode)
   if (isArray(vnode.children)) {
     cloned.children = (vnode.children as VNode[]).map(deepCloneVNode)
@@ -810,6 +930,7 @@ function deepCloneVNode(vnode: VNode): VNode {
  * @private
  */
 export function createTextVNode(text: string = ' ', flag: number = 0): VNode {
+  // 文本节点也统一走 VNode 体系，便于 patch 把文本和其他节点一视同仁处理。
   return createVNode(Text, null, text, flag)
 }
 
@@ -836,12 +957,23 @@ export function createCommentVNode(
   // block to ensure correct updates.
   asBlock: boolean = false,
 ): VNode {
+  // `v-else` 一类条件分支里，注释占位有时也必须作为 block 创建，
+  // 否则切换分支时 block 边界会不稳定。
   return asBlock
     ? (openBlock(), createBlock(Comment, null, text))
     : createVNode(Comment, null, text)
 }
 
 export function normalizeVNode(child: VNodeChild): VNode {
+  /**
+   * 把任意合法子节点值转换成标准 VNode。
+   *
+   * 这是 children 进入渲染器前的最后一道统一入口：
+   * - `null/boolean` -> 注释占位
+   * - 数组 -> Fragment
+   * - 已是 vnode -> 复用或克隆
+   * - 字符串/数字 -> Text
+   */
   if (child == null || typeof child === 'boolean') {
     // empty placeholder
     return createVNode(Comment)
@@ -865,6 +997,8 @@ export function normalizeVNode(child: VNodeChild): VNode {
 
 // optimized normalization for template-compiled render fns
 export function cloneIfMounted(child: VNode): VNode {
+  // 已挂载 vnode 不能直接在下一轮 render 里原样复用，
+  // 否则旧的 el / component 引用会污染新的 patch 过程，所以这里按需克隆。
   return (child.el === null && child.patchFlag !== PatchFlags.CACHED) ||
     child.memo
     ? child
@@ -872,6 +1006,17 @@ export function cloneIfMounted(child: VNode): VNode {
 }
 
 export function normalizeChildren(vnode: VNode, children: unknown): void {
+  /**
+   * 归一化 vnode.children。
+   *
+   * 主要功能：
+   * - 把 children 统一整理成渲染器可识别的几种标准形态
+   * - 同步更新 `shapeFlag` 上的 children 类型位
+   *
+   * 为什么重要：
+   * - patch 不希望在热路径里反复判断“children 到底是字符串、数组还是插槽对象”
+   * - 这里提前整理好，后面渲染器就能按位标记快速分支
+   */
   let type = 0
   const { shapeFlag } = vnode
   if (children == null) {
@@ -881,6 +1026,7 @@ export function normalizeChildren(vnode: VNode, children: unknown): void {
   } else if (typeof children === 'object') {
     if (shapeFlag & (ShapeFlags.ELEMENT | ShapeFlags.TELEPORT)) {
       // Normalize slot to plain children for plain element and Teleport
+      // 原生元素 / Teleport 不保留“插槽对象”语义，要把 default slot 直接拍平成普通 children。
       const slot = (children as any).default
       if (slot) {
         // _c marker is added by withCtx() indicating this is a compiled slot
@@ -891,6 +1037,7 @@ export function normalizeChildren(vnode: VNode, children: unknown): void {
       return
     } else {
       type = ShapeFlags.SLOTS_CHILDREN
+      // `_` 是编译器给 slots 打的稳定性标记，后续 diff 会用它判断是否需要强制更新插槽。
       const slotFlag = (children as RawSlots)._
       if (!slotFlag && !isInternalObject(children)) {
         // if slots are not normalized, attach context instance
@@ -927,6 +1074,20 @@ export function normalizeChildren(vnode: VNode, children: unknown): void {
 }
 
 export function mergeProps(...args: (Data & VNodeProps)[]): Data {
+  /**
+   * 合并多份 VNode props。
+   *
+   * 主要功能：
+   * - class 合并成规范化 class
+   * - style 合并成规范化 style
+   * - 事件监听做数组拼接而不是直接覆盖
+   * - 其他普通字段后写覆盖前写
+   *
+   * 常见来源：
+   * - `cloneVNode()`
+   * - `h()` / JSX 中多层 props 透传
+   * - 编译产物里的 props 合并
+   */
   const ret: Data = {}
   for (let i = 0; i < args.length; i++) {
     const toMerge = args[i]
@@ -971,6 +1132,13 @@ export function invokeVNodeHook(
   vnode: VNode,
   prevVNode: VNode | null = null,
 ): void {
+  /**
+   * 调用 vnode 级别生命周期钩子。
+   *
+   * 主要功能：
+   * - 统一包装 `onVnodeBeforeMount / onVnodeUpdated` 等钩子的执行
+   * - 让 vnode hook 也走统一的错误处理通道
+   */
   callWithAsyncErrorHandling(hook, instance, ErrorCodes.VNODE_HOOK, [
     vnode,
     prevVNode,

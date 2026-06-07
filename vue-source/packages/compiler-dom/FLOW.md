@@ -1,51 +1,95 @@
-# `compiler-dom` 源码主流程图
+# `compiler-dom` 中文阅读顺序
 
 ```text
-DOM template
-  -> parserOptions 扩展 HTML 规则
-  -> baseCompile()
-     + DOMNodeTransforms
-     + DOMDirectiveTransforms
-  -> DOM render code
+模板字符串
+  -> parse() / parserOptions
+  -> baseCompile() 进入 compiler-core 主流程
+  -> 注入 DOMNodeTransforms / DOMDirectiveTransforms
+  -> 生成面向 runtime-dom 的 render 代码
 ```
 
-## 关键调用链
+## 先抓住一句话
 
-1. `compile()` in `src/index.ts`
-2. `parserOptions` in `src/parserOptions.ts`
-3. `ignoreSideEffectTags()`
-4. `transformStyle()`
-5. `transformVHtml()` / `transformVText()` / `transformModel()` / `transformOn()` / `transformShow()`
-6. `stringifyStatic()`
+`compiler-dom` 不是重写了一套编译器，而是在 `compiler-core` 上注入浏览器平台规则。
 
-## 关键节点
+它主要负责三件事：
 
-- `compile()` 不是重写整套编译器，而是在 `compiler-core` 上注入 DOM 平台规则。
-- `DOMNodeTransforms`
-  处理平台特有节点逻辑，比如 style、Transition、HTML 嵌套校验。
-- `DOMDirectiveTransforms`
-  覆盖核心层默认指令行为，让 `v-model` / `v-on` 生成真正面向浏览器的运行时代码。
-- `stringifyStatic()`
-  把静态树尽量字符串化，给 DOM 插入走更快路径。
+- 按 HTML 规则解析模板，而不是只按平台无关语法解析。
+- 把 DOM 专属指令编译成浏览器运行时需要的 props / helper。
+- 在合适场景下做 DOM 平台优化，例如静态字符串化。
 
-## 面试时怎么讲
+## 推荐阅读顺序
 
-- `compiler-dom` 的价值不在“再写一遍编译器”，而在“平台扩展点”。
-- Vue 把平台差异放在 compiler-dom / runtime-dom，核心层才能复用到 SSR、自定义 renderer。
+1. `src/index.ts`
+   这里是入口。先看 `compile()` 怎么把 `parserOptions`、`DOMNodeTransforms`、`DOMDirectiveTransforms` 注入到 `baseCompile()`。
 
-## 面试问法
+2. `src/parserOptions.ts`
+   这里决定模板按什么 HTML 规则解析，包括：
+   - 哪些是原生标签
+   - 哪些是 void tag
+   - `<svg>` / `<math>` 的命名空间切换
+   - `Transition` / `TransitionGroup` 识别
 
-- `compiler-dom` 相比 `compiler-core` 多做了什么？
-- `v-model` 为什么要在 DOM 编译层单独处理？
-- 为什么 `<script>` / `<style>` 这种标签要额外忽略副作用？
+3. `src/runtimeHelpers.ts`
+   这里是“编译期 symbol”和“运行时 helper 名称”的映射表。
+   例如 `V_MODEL_TEXT` 最后会对应到运行时里的 `vModelText`。
 
-## 源码定位
+4. `src/transforms/ignoreSideEffectTags.ts`
+   这里先把 `<script>` 和 `<style>` 这类副作用标签从组件模板里移除。
 
-- 入口：`src/index.ts`
-- 平台解析选项：`src/parserOptions.ts`
-- DOM 指令转换：`src/transforms/vModel.ts`、`src/transforms/vOn.ts`
-- 静态字符串化：`src/transforms/stringifyStatic.ts`
+5. `src/transforms/transformStyle.ts`
+   这里会把静态 `style="..."` 提前改造成等价的 `:style="{...}"`。
 
-## 答题模板
+6. 指令转换
+   重点看这几个文件：
+   - `src/transforms/vHtml.ts`
+   - `src/transforms/vText.ts`
+   - `src/transforms/vShow.ts`
+   - `src/transforms/vModel.ts`
+   - `src/transforms/vOn.ts`
 
-`compiler-dom` 本质上不是另一套编译器，而是在 `compiler-core` 的基础上注入 DOM 平台规则。它会补 HTML 解析选项、覆盖 `v-model` / `v-on` / `v-show` 这类平台相关指令转换，并在非浏览器构建里做静态字符串化优化。所以它解决的是“同一套模板语法，在浏览器平台应该怎么编译”这个问题。 
+   阅读重点：
+   - `v-html` 为什么转成 `innerHTML`
+   - `v-text` 为什么转成 `textContent`
+   - `v-show` 为什么必须依赖运行时指令
+   - `v-model` 为什么要按 `input[type=radio] / checkbox / select / textarea` 分流
+   - `v-on` 怎么把修饰符拆成 `withModifiers`、`withKeys` 和事件名后缀
+
+7. 开发期校验
+   相关文件：
+   - `src/transforms/Transition.ts`
+   - `src/transforms/validateHtmlNesting.ts`
+   - `src/htmlNesting.ts`
+   - `src/errors.ts`
+
+   这里主要看：
+   - `<Transition>` 为什么只能包一个有效子节点
+   - 非法 HTML 嵌套为什么只告警不阻断编译
+   - DOM 编译错误码是怎么从 `compiler-core` 扩展出来的
+
+8. `src/transforms/stringifyStatic.ts`
+   这是偏优化的代码，建议最后看。它会把连续静态树压成 `createStaticVNode("...")`，让 runtime-dom 走更快的 DOM 创建路径。
+
+## 从调用链理解一遍
+
+1. 模板进入 `compile()`
+2. `compile()` 调用 `baseCompile()`
+3. `baseCompile()` 内部先 parse
+4. parse 时使用 `parserOptions`
+5. transform 阶段执行 DOM 节点转换和 DOM 指令转换
+6. codegen 阶段根据 `runtimeHelpers.ts` 里注册的 helper 生成导入和调用
+7. 最终得到面向 `runtime-dom` 的 render 代码
+
+## 面试时可以怎么讲
+
+可以直接用下面这段话：
+
+`compiler-dom` 的作用不是重做编译器，而是把浏览器平台差异接到 `compiler-core` 的扩展点里。它一方面补了 HTML 解析规则，比如原生标签识别、命名空间切换、实体解码；另一方面覆盖了 DOM 专属指令转换，比如 `v-model`、`v-on`、`v-show`。最后它还会做一些浏览器平台优化，例如静态树字符串化。所以它解决的核心问题是：同样一份 Vue 模板，在浏览器平台应该被编译成什么样的 render 逻辑。
+
+## 可以带着问题去读
+
+- `compiler-dom` 相比 `compiler-core` 多补了哪些平台能力？
+- 为什么 `v-model` 必须在 DOM 层细分到不同表单控件？
+- 为什么 `v-on` 的修饰符有的改事件名，有的包运行时 helper？
+- 为什么 `<script>` / `<style>` 要在编译期直接忽略？
+- 为什么 `stringifyStatic()` 只在 Node 侧编译启用？

@@ -1,8 +1,14 @@
 /**
- * 文件作用：实现 DOM 专属内置组件。
+ * 文件作用：实现浏览器环境下的 `TransitionGroup` 运行时能力。
  *
- * 当前文件 TransitionGroup.ts 负责浏览器环境里的过渡类内置组件，
- * 例如 Transition、TransitionGroup。
+ * 它在普通 `Transition` 的 enter/leave 基础上，
+ * 额外负责“同级列表节点移动”这一类动画场景。
+ *
+ * 核心思路就是典型的 FLIP：
+ * - First：记录旧位置
+ * - Last：记录新位置
+ * - Invert：先施加反向位移
+ * - Play：去掉反向位移，让浏览器过渡到真实位置
  */
 
 import {
@@ -94,11 +100,15 @@ const TransitionGroupImpl: ComponentOptions = /*@__PURE__*/ decorate({
           moveClass,
         )
       ) {
+        // 如果 moveClass 根本没有声明 transform 过渡，就没必要走整套 FLIP 计算。
         prevChildren = []
         return
       }
 
-      // 分三轮执行，避免读写交叉导致布局抖动。
+      // 分三轮执行，避免读写交叉导致布局抖动：
+      // 1. 清理旧回调
+      // 2. 读取新位置
+      // 3. 回写反向位移
       prevChildren.forEach(callPendingCbs)
       prevChildren.forEach(recordPosition)
       const movedChildren = prevChildren.filter(applyTranslation)
@@ -127,6 +137,8 @@ const TransitionGroupImpl: ComponentOptions = /*@__PURE__*/ decorate({
     })
 
     return () => {
+      // 每次渲染都要重新给当前 children 挂上过渡钩子，
+      // 这样 enter/leave/move 才能和最新 vnode 树对齐。
       const rawProps = toRaw(props)
       const cssTransitionProps = resolveTransitionProps(rawProps)
       let tag = rawProps.tag || Fragment
@@ -193,6 +205,13 @@ export const TransitionGroup = TransitionGroupImpl as unknown as {
  * 作用：清掉节点上尚未结束的 enter/move 回调，避免上一轮动画残留影响本轮。
  */
 function callPendingCbs(c: VNode) {
+  /**
+   * 清理节点上尚未结束的 enter/move 回调。
+   *
+   * 为什么需要它：
+   * - 列表项可能在上一次动画还没结束时就进入下一轮更新
+   * - 旧回调不清掉，新的位移动画很容易被旧的 transitionend 逻辑干扰
+   */
   const el = c.el as any
   if (el[moveCbKey]) {
     el[moveCbKey]()
@@ -206,6 +225,11 @@ function callPendingCbs(c: VNode) {
  * 作用：记录子节点更新后的新位置。
  */
 function recordPosition(c: VNode) {
+  /**
+   * 记录节点更新后的新屏幕坐标。
+   *
+   * 这一步对应 FLIP 里的 Last。
+   */
   newPositionMap.set(c, getPosition(c.el as HTMLElement))
 }
 
@@ -213,6 +237,14 @@ function recordPosition(c: VNode) {
  * 作用：根据前后位置差给节点施加一个“反向位移”，为 FLIP 动画做准备。
  */
 function applyTranslation(c: VNode): VNode | undefined {
+  /**
+   * 根据旧位置和新位置给节点施加一个“反向位移”。
+   *
+   * 这一步对应 FLIP 里的 Invert：
+   * - 元素真实位置其实已经变了
+   * - 先用 transform 把它瞬间拉回旧位置
+   * - 后续再移除 transform，让浏览器自然过渡到新位置
+   */
   const oldPos = positionMap.get(c)!
   const newPos = newPositionMap.get(c)!
   const dx = oldPos.left - newPos.left
@@ -230,9 +262,11 @@ function applyTranslation(c: VNode): VNode | undefined {
     // 缩放几乎等于 1 时直接按 1 处理，减少浮点误差造成的位移抖动。
     if (Math.abs(scaleX - 1) < 0.01) scaleX = 1
     if (Math.abs(scaleY - 1) < 0.01) scaleY = 1
+    // 某些场景元素本身带缩放，位移量要按当前缩放比例折算，否则视觉移动距离会不准。
     s.transform = s.webkitTransform = `translate(${dx / scaleX}px,${
       dy / scaleY
     }px)`
+    // 先把 transitionDuration 设成 0，让“瞬移回旧位置”这一步不出现可见动画。
     s.transitionDuration = '0s'
     return c
   }
@@ -242,6 +276,7 @@ function applyTranslation(c: VNode): VNode | undefined {
  * 作用：读取元素当前的屏幕坐标。
  */
 function getPosition(el: HTMLElement): Position {
+  // 这里取的是视口坐标；对于 FLIP 来说，只要前后比较使用同一坐标系即可。
   const rect = el.getBoundingClientRect()
   return {
     left: rect.left,
@@ -270,6 +305,7 @@ function hasCSSTransform(
   const container = (
     root.nodeType === 1 ? root : root.parentNode
   ) as HTMLElement
+  // 把克隆节点临时插进真实容器，是为了让浏览器基于当前上下文算出准确过渡信息。
   container.appendChild(clone)
   const { hasTransform } = getTransitionInfo(clone)
   container.removeChild(clone)

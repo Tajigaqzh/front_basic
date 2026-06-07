@@ -6,10 +6,10 @@ import {
 import { compile } from '@vue-source/compiler-ssr'
 import { NO, extend, generateCodeFrame, isFunction } from '@vue-source/shared'
 import type { CompilerError, CompilerOptions } from '@vue-source/compiler-core'
-import type { PushFn } from '../render'
+import type { PushFn } from '../buffer'
 
 import * as Vue from '@vue-source/runtime-dom'
-import * as helpers from '../internal'
+import type * as InternalHelpers from '../internal'
 
 type SSRRenderFunction = (
   context: any,
@@ -17,13 +17,16 @@ type SSRRenderFunction = (
   parentInstance: ComponentInternalInstance,
 ) => void
 
+type InternalHelpersModule = typeof InternalHelpers
+
+// 运行时模板编译结果和编译选项强相关，必须按模板内容 + 编译配置联合缓存。
 const compileCache: Record<string, SSRRenderFunction> = Object.create(null)
 
 export function ssrCompile(
   template: string,
   instance: ComponentInternalInstance,
 ): SSRRenderFunction {
-  // TODO: this branch should now work in ESM builds, enable it in a minor
+  // 运行时编译依赖 `new Function` 和 require 映射，因此这里只支持 CJS 构建。
   if (!__CJS__) {
     throw new Error(
       `On-the-fly template compilation is not supported in the ESM build of ` +
@@ -32,7 +35,11 @@ export function ssrCompile(
     )
   }
 
-  // TODO: This is copied from runtime-core/src/component.ts and should probably be refactored
+  const loadInternalHelpers = () =>
+    ((0, eval)('require')('../internal') as InternalHelpersModule)
+
+  // 这里把 app 级和组件级编译配置合并成最终 SSR 编译参数，
+  // 保证运行时编译行为尽量贴近常规 template 编译。
   const Component = instance.type as ComponentOptions
   const { isCustomElement, compilerOptions } = instance.appContext.config
   const { delimiters, compilerOptions: componentCompilerOptions } = Component
@@ -67,6 +74,8 @@ export function ssrCompile(
     return cached
   }
 
+  // 开发环境尽量输出带 code frame 的错误，方便直接定位模板位置；
+  // 生产环境则保留原始异常，交给上层统一处理。
   finalCompilerOptions.onError = (err: CompilerError) => {
     if (__DEV__) {
       const message = `[@vue-source/server-renderer] Template compilation error: ${err.message}`
@@ -86,10 +95,12 @@ export function ssrCompile(
   const { code } = compile(template, finalCompilerOptions)
   const requireMap = {
     '@vue-source/runtime-dom': Vue,
-    '@vue-source/server-renderer': helpers,
+    '@vue-source/server-renderer': loadInternalHelpers(),
   }
   const fakeRequire = (
     id: '@vue-source/runtime-dom' | '@vue-source/server-renderer',
   ) => requireMap[id]
+
+  // 编译器产出的是一段 CommonJS 风格代码，这里通过受控 require 环境执行。
   return (compileCache[cacheKey] = Function('require', code)(fakeRequire))
 }

@@ -33,6 +33,8 @@ export function compile(
   source: string | RootNode,
   options: CompilerOptions = {},
 ): CodegenResult {
+  // SSR 编译不是一套完全独立的 parser，它先尽量复用 compiler-dom/compiler-core
+  // 的解析与第一轮 transform，只是在选项层面强制切到 SSR 模式。
   options = {
     ...options,
     ...parserOptions,
@@ -50,6 +52,8 @@ export function compile(
 
   // Save raw options for AST. This is needed when performing sub-transforms
   // on slot vnode branches.
+  // 某些子流程（例如组件 slot 的 vnode fallback 分支）后面还要重新做一遍
+  // vnode 风格 transform，所以先把原始选项挂到 ast 上备用。
   rawOptionsMap.set(ast, options)
 
   transform(ast, {
@@ -68,6 +72,8 @@ export function compile(
       ssrTransformComponent,
       trackSlotScopes,
       transformStyle,
+      // 用户自定义 transform 仍插在第一轮模板 transform 里，
+      // 这样它们看到的还是接近普通 template AST 的结构。
       ...(options.nodeTransforms || []), // user transforms
     ],
     directiveTransforms: {
@@ -88,6 +94,8 @@ export function compile(
 
   // traverse the template AST and convert into SSR codegen AST
   // by replacing ast.codegenNode.
+  // 第一轮 transform 结束后，AST 里仍然主要是“模板语义节点”。
+  // 第二轮 ssrCodegenTransform 才会把它们改造成 `_push(...)` 风格的 JS AST。
   ssrCodegenTransform(ast, options)
 
   return generate(ast, options)

@@ -186,6 +186,8 @@ export function createHydrationFunctions(
         slotScopeIds,
         isFragmentStart,
       )
+    // mismatch 处理闭包里顺手带上“当前位置是否其实是 fragment 起点”，
+    // 因为 fragment 失配时不能只删当前注释，还要考虑整段边界清理。
 
     const { type, ref, shapeFlag, patchFlag } = vnode
     let domType = node.nodeType
@@ -277,6 +279,7 @@ export function createHydrationFunctions(
         if (!isFragmentStart) {
           nextNode = onMismatch()
         } else {
+          // Fragment hydration 的真正工作是递归接管它锚点之间那一整段子节点。
           nextNode = hydrateFragment(
             node as Comment,
             vnode,
@@ -353,6 +356,7 @@ export function createHydrationFunctions(
           if (domType !== DOMNodeTypes.COMMENT) {
             nextNode = onMismatch()
           } else {
+            // Teleport 自己知道目标容器、起止锚点和内容分布，hydrate 也必须交给它专门处理。
             nextNode = (vnode.type as typeof TeleportImpl).hydrate(
               node,
               vnode as TeleportVNode,
@@ -652,6 +656,7 @@ export function createHydrationFunctions(
         )
       }
     }
+    // 返回“还未被当前父 vnode 消费掉”的下一个真实兄弟节点，供外层继续接管。
     return node
   }
 
@@ -682,6 +687,7 @@ export function createHydrationFunctions(
       optimized,
     )
     if (next && isComment(next) && next.data === ']') {
+      // 找到结束锚点后，fragment 这段服务端 DOM 就算完整接管成功。
       return nextSibling((vnode.anchor = next))
     } else {
       // 没有找到 fragment 结束锚点，说明服务端结构和客户端预期已经脱节。
@@ -774,6 +780,7 @@ export function createHydrationFunctions(
     open = '[',
     close = ']',
   ): Node | null => {
+    // 这里用 `match` 计数处理嵌套片段/Teleport，确保遇到成对嵌套注释时不会过早停下。
     let match = 0
     while (node) {
       node = nextSibling(node)
@@ -781,6 +788,7 @@ export function createHydrationFunctions(
         if (node.data === open) match++
         if (node.data === close) {
           if (match === 0) {
+            // 返回的是“结束锚点的下一个兄弟”，因为外层通常要继续消费它后面的节点。
             return nextSibling(node)
           } else {
             match--
@@ -806,6 +814,8 @@ export function createHydrationFunctions(
     }
 
     // update vnode
+    // 替换真实节点后，还要沿父组件链把缓存的 `.el` 一起修正，
+    // 否则后续更新仍可能握着旧 DOM 引用。
     let parent = parentComponent
     while (parent) {
       if (parent.vnode.el === oldNode) {
@@ -926,6 +936,7 @@ function propHasMismatch(
       // 测试环境下拼成单字符串，方便断言和排查。
       warn(`${preSegment} ${el.tagName}${postSegment}`)
     } else {
+      // 开发环境把真实元素对象一并打出来，方便直接在控制台定位对应 DOM。
       warn(preSegment, el, postSegment)
     }
     return true

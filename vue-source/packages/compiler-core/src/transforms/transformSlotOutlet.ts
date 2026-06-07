@@ -18,6 +18,7 @@ import { processExpression } from './transformExpression'
 export const transformSlotOutlet: NodeTransform = (node, context) => {
   if (isSlotOutlet(node)) {
     const { children, loc } = node
+    // `<slot/>` 最终会编译成 renderSlot($slots, name, props, fallback, noSlotted)。
     const { slotName, slotProps } = processSlotOutlet(node, context)
 
     const slotArgs: CallExpression['arguments'] = [
@@ -35,6 +36,7 @@ export const transformSlotOutlet: NodeTransform = (node, context) => {
     }
 
     if (children.length) {
+      // `<slot>` 内部的 fallback 内容会被编译成一个函数，作为 renderSlot 的第 4 个参数。
       slotArgs[3] = createFunctionExpression([], children, false, false, loc)
       expectedLen = 4
     }
@@ -61,6 +63,7 @@ export function processSlotOutlet(
   node: SlotOutletNode,
   context: TransformContext,
 ): SlotOutletProcessResult {
+  // 从 `<slot name="foo" :bar="x" />` 中拆出插槽名和传给父组件的 slot props。
   let slotName: string | ExpressionNode = `"default"`
   let slotProps: PropsExpression | undefined = undefined
 
@@ -70,6 +73,7 @@ export function processSlotOutlet(
     if (p.type === NodeTypes.ATTRIBUTE) {
       if (p.value) {
         if (p.name === 'name') {
+          // 静态 `name="foo"` 直接变成字符串字面量。
           slotName = JSON.stringify(p.value.content)
         } else {
           p.name = camelize(p.name)
@@ -79,6 +83,7 @@ export function processSlotOutlet(
     } else {
       if (p.name === 'bind' && isStaticArgOf(p.arg, 'name')) {
         if (p.exp) {
+          // `:name="expr"` 走动态插槽名。
           slotName = p.exp
         } else if (p.arg && p.arg.type === NodeTypes.SIMPLE_EXPRESSION) {
           const name = camelize(p.arg.content)
@@ -88,6 +93,7 @@ export function processSlotOutlet(
           }
         }
       } else {
+        // 其余属性/指令都视为传给 slot 的 props。
         if (p.name === 'bind' && p.arg && isStaticExp(p.arg)) {
           p.arg.content = camelize(p.arg.content)
         }
@@ -97,6 +103,7 @@ export function processSlotOutlet(
   }
 
   if (nonNameProps.length > 0) {
+    // slot outlet 的 props 复用 buildProps 逻辑，但不允许出现额外 directive runtime。
     const { props, directives } = buildProps(
       node,
       context,
@@ -107,6 +114,7 @@ export function processSlotOutlet(
     slotProps = props
 
     if (directives.length) {
+      // `<slot>` 上除了 name/bind 这类可转成 props 的东西，其他指令都不合法。
       context.onError(
         createCompilerError(
           ErrorCodes.X_V_SLOT_UNEXPECTED_DIRECTIVE_ON_SLOT_OUTLET,

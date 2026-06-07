@@ -45,7 +45,12 @@ import { warn } from './warning'
 import type { SlotsType, StrictUnwrapSlotsType } from './componentSlots'
 import type { Ref } from '@vue-source/reactivity'
 
-// 这类 API 在运行时被真正调用通常意味着“编译没有把宏抹掉”，这里统一给出提示。
+/**
+ * 给运行时误用编译宏的场景输出统一提示。
+ *
+ * 这类 API 正常应该在编译阶段被抹掉，
+ * 因此运行时真正走到这里通常意味着使用位置不对或构建链有问题。
+ */
 const warnRuntimeUsage = (method: string) =>
   warn(
     `${method}() is a compiler-hint helper that is only usable inside ` +
@@ -100,6 +105,13 @@ export function defineProps<TypeProps>(): DefineProps<
 >
 // implementation
 export function defineProps() {
+  /**
+   * `<script setup>` 编译宏占位符：声明 props。
+   *
+   * 正常情况下：
+   * - 编译器会把它改写成运行时 props 定义或类型信息
+   * - 最终不会在浏览器里真的执行到这里
+   */
   if (__DEV__) {
     warnRuntimeUsage(`defineProps`)
   }
@@ -158,6 +170,11 @@ export function defineEmits<T extends ComponentTypeEmits>(): T extends (
   : ShortEmits<T>
 // implementation
 export function defineEmits() {
+  /**
+   * `<script setup>` 编译宏占位符：声明 emits。
+   *
+   * 运行时真正落到这里通常表示编译阶段没有正确抹除该宏调用。
+   */
   if (__DEV__) {
     warnRuntimeUsage(`defineEmits`)
   }
@@ -191,6 +208,9 @@ type ShortEmits<T extends Record<string, any>> = UnionToIntersection<
 export function defineExpose<
   Exposed extends Record<string, any> = Record<string, any>,
 >(exposed?: Exposed): void {
+  /**
+   * `<script setup>` 编译宏占位符：声明对外暴露的实例成员。
+   */
   if (__DEV__) {
     warnRuntimeUsage(`defineExpose`)
   }
@@ -239,6 +259,13 @@ export function defineOptions<
     slots?: never
   },
 ): void {
+  /**
+   * `<script setup>` 编译宏占位符：补充额外组件选项。
+   *
+   * 典型场景：
+   * - `inheritAttrs`
+   * - 其他组合式 API 不方便直接表达的选项
+   */
   if (__DEV__) {
     warnRuntimeUsage(`defineOptions`)
   }
@@ -263,6 +290,9 @@ export function defineOptions<
 export function defineSlots<
   S extends Record<string, any> = Record<string, any>,
 >(): StrictUnwrapSlotsType<SlotsType<S>> {
+  /**
+   * `<script setup>` 编译宏占位符：仅用于给 IDE/TS 提供 slots 类型提示。
+   */
   if (__DEV__) {
     warnRuntimeUsage(`defineSlots`)
   }
@@ -336,6 +366,14 @@ export function defineModel<T, M extends PropertyKey = string, G = T, S = T>(
 ): ModelRef<T | undefined, M, G | undefined, S | undefined>
 
 export function defineModel(): any {
+  /**
+   * `<script setup>` 编译宏占位符：声明 `v-model` 对应的 prop + emit。
+   *
+   * 正常链路里会被编译器改写成：
+   * - props 声明
+   * - emits 声明
+   * - `useModel()` 调用
+   */
   // 正常情况下这里会被编译器抹掉并改写成 props/emits/useModel 调用；
   // 运行时真正落到这里说明使用方式脱离了 `<script setup>` 编译链。
   if (__DEV__) {
@@ -415,6 +453,12 @@ export function withDefaults<
   props: DefineProps<T, BKeys>,
   defaults: Defaults,
 ): PropsWithDefaults<T, Defaults, BKeys> {
+  /**
+   * `<script setup>` 编译宏占位符：给类型式 `defineProps` 补默认值。
+   *
+   * 运行时几乎不做实际逻辑，
+   * 真正的默认值合并通常由编译产物转成 `mergeDefaults()` 调用完成。
+   */
   // 运行时真正调用到这里通常说明编译宏没有被正确抹掉；
   // 在正常链路里它主要用于类型推导，真实合并逻辑由编译产物处理。
   if (__DEV__) {
@@ -427,6 +471,12 @@ export function withDefaults<
  * 作用：返回当前组件 setup 上下文里的 `slots`。
  */
 export function useSlots(): SetupContext['slots'] {
+  /**
+   * 读取当前组件 setup 上下文里的 `slots`。
+   *
+   * 本质上只是从惰性创建的 `setupContext` 上取字段，
+   * 但它把 `<script setup>` / 组合式 API 访问入口统一成了稳定的运行时 helper。
+   */
   return getContext('useSlots').slots
 }
 
@@ -434,10 +484,24 @@ export function useSlots(): SetupContext['slots'] {
  * 作用：返回当前组件 setup 上下文里的 `attrs`。
  */
 export function useAttrs(): SetupContext['attrs'] {
+  /**
+   * 读取当前组件 setup 上下文里的 `attrs`。
+   *
+   * 返回值会与组件实例上的 attrs 保持联动，
+   * 供组合式 API 在 setup 中访问未声明 props 的透传属性。
+   */
   return getContext('useAttrs').attrs
 }
 
 function getContext(calledFunctionName: string): SetupContext {
+  /**
+   * 获取当前组件的 setupContext。
+   *
+   * 主要功能：
+   * - 确保当前确实存在活跃组件实例
+   * - 按需惰性创建 `setupContext`
+   * - 让 `useSlots()` / `useAttrs()` 等 helper 共用同一入口
+   */
   // `setupContext` 按需惰性创建，避免不使用第二参时也提前构造整套上下文对象。
   const i = getCurrentInstance()!
   if (__DEV__ && !i) {
@@ -452,9 +516,15 @@ function getContext(calledFunctionName: string): SetupContext {
 export function normalizePropsOrEmits(
   props: ComponentPropsOptions | EmitsOptions,
 ): ComponentObjectPropsOptions | ObjectEmitsOptions {
+  /**
+   * 把 props / emits 的数组写法统一转成对象写法。
+   *
+   * 这样后续合并逻辑就不必分别处理两套结构。
+   */
   // 数组写法统一转对象写法，便于 props / emits 后续共用一套合并与归一化逻辑。
   return isArray(props)
     ? props.reduce(
+        // 数组项只表达“声明了这个 key”，因此值先用 null 占位，后续再按对象结构统一处理。
         (normalized, p) => ((normalized[p] = null), normalized),
         {} as ComponentObjectPropsOptions | ObjectEmitsOptions,
       )
@@ -473,20 +543,25 @@ export function mergeDefaults(
   // 使运行时后续走统一的 props 归一化与默认值求值逻辑。
   const props = normalizePropsOrEmits(raw)
   for (const key in defaults) {
+    // `__skip_xxx` 是编译器生成的控制位，不是用户真正声明的 props 名。
     if (key.startsWith('__skip')) continue
+    // `opt` 表示当前默认值目标对应的 props 配置项，可能原本是数组/函数/对象/null 中任意一种。
     let opt = props[key]
     if (opt) {
       if (isArray(opt) || isFunction(opt)) {
+        // 简写写法必须先转成标准对象，才能把 default 正式挂进去。
         opt = props[key] = { type: opt, default: defaults[key] }
       } else {
         opt.default = defaults[key]
       }
     } else if (opt === null) {
+      // 数组声明归一化后会是 null，这里补成仅含 default 的对象即可继续复用统一逻辑。
       opt = props[key] = { default: defaults[key] }
     } else if (__DEV__) {
       warn(`props default key "${key}" has no corresponding declaration.`)
     }
     if (opt && defaults[`__skip_${key}`]) {
+      // `skipFactory` 告诉 props 默认值求值逻辑：这里的函数值是“默认值本身”，不是工厂函数。
       opt.skipFactory = true
     }
   }
@@ -501,9 +576,18 @@ export function mergeModels(
   a: ComponentPropsOptions | EmitsOptions,
   b: ComponentPropsOptions | EmitsOptions,
 ): ComponentPropsOptions | EmitsOptions {
+  /**
+   * 合并两份 model 相关声明。
+   *
+   * 常见来源：
+   * - 编译生成的 `defineModel`
+   * - 用户原本手写的 props / emits
+  */
   // model 相关声明既可能是数组形态，也可能是对象形态，这里分别按各自最自然的方式合并。
   if (!a || !b) return a || b
+  // 两边都是数组时，保留原始声明语义直接拼接即可。
   if (isArray(a) && isArray(b)) return a.concat(b)
+  // 对象形态先归一化后浅合并，后者同名键会覆盖前者。
   return extend({}, normalizePropsOrEmits(a), normalizePropsOrEmits(b))
 }
 
@@ -524,6 +608,7 @@ export function createPropsRestProxy(
     if (!excludedKeys.includes(key)) {
       Object.defineProperty(ret, key, {
         enumerable: true,
+        // 通过 getter 直接转发回源 props，保证 rest 对象始终反映最新值。
         get: () => props[key],
       })
     }
@@ -540,7 +625,16 @@ export function createPropsRestProxy(
  * @internal
  */
 export function withAsyncContext(getAwaitable: () => any): [any, () => void] {
+  /**
+   * 让异步 setup 片段在 `await` 前后仍能拿回正确的当前组件实例。
+   *
+   * 主要功能：
+   * - 在 `await` 挂起前清空全局 currentInstance
+   * - 在恢复点重新设回当前组件实例
+   * - 恢复完当前 continuation 后再及时清理，避免实例泄漏到别的微任务
+  */
   const ctx = getCurrentInstance()!
+  // SSR 下还要同步维护 setup 状态位，否则服务端异步 setup 恢复点会丢上下文信息。
   const inSSRSetup = isInSSRComponentSetup
   if (__DEV__ && !ctx) {
     warn(
@@ -569,6 +663,7 @@ export function withAsyncContext(getAwaitable: () => any): [any, () => void] {
   // then clear global currentInstance for user microtasks.
   const cleanup = () => {
     // 恢复点跑完后要把全局 currentInstance 再清掉，避免泄漏到用户后续微任务里。
+    // 如果并发 continuation 已把 currentInstance 切走，这里只负责平衡当前 ctx 对应的 scope 计数。
     if (getCurrentInstance() !== ctx) ctx.scope.off()
     unsetCurrentInstance()
     if (inSSRSetup) {
@@ -579,6 +674,7 @@ export function withAsyncContext(getAwaitable: () => any): [any, () => void] {
   if (isPromise(awaitable)) {
     awaitable = awaitable.catch(e => {
       restore()
+      // catch continuation 仍可能依赖当前实例，因此清理动作要再后延一个微任务。
       // Defer cleanup so the async function's catch continuation
       // still runs with the restored instance.
       Promise.resolve().then(() => Promise.resolve().then(cleanup))
@@ -589,6 +685,7 @@ export function withAsyncContext(getAwaitable: () => any): [any, () => void] {
     awaitable,
     () => {
       restore()
+      // 正常 continuation 也要等当前这段同步逻辑跑完，再撤掉恢复的实例上下文。
       // Keep instance for the current continuation, then cleanup.
       Promise.resolve().then(cleanup)
     },

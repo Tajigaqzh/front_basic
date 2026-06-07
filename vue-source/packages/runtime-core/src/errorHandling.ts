@@ -74,6 +74,9 @@ export const ErrorTypeStrings: Record<ErrorTypes, string> = {
   [ErrorCodes.COMPONENT_UPDATE]: 'component update',
   [ErrorCodes.APP_UNMOUNT_CLEANUP]: 'app unmount cleanup function',
 }
+// 这张表把“错误来源枚举值”翻译成人类可读文案：
+// - 开发环境直接用于 warning/error 输出
+// - 生产环境则通常只保留错误码或错误参考链接
 
 export type ErrorTypes = LifecycleHooks | ErrorCodes | WatchErrorCodes
 
@@ -95,6 +98,7 @@ export function callWithErrorHandling(
   try {
     return args ? fn(...args) : fn()
   } catch (err) {
+    // 所有同步用户代码入口统一汇总到 `handleError()`，避免各处重复写 try/catch 策略。
     handleError(err, instance, type)
   }
 }
@@ -115,6 +119,7 @@ export function callWithAsyncErrorHandling(
   if (isFunction(fn)) {
     const res = callWithErrorHandling(fn, instance, type, args)
     if (res && isPromise(res)) {
+      // 异步返回 Promise 时，还要兜住 reject；否则同步包装只能覆盖函数“当下这一帧”。
       res.catch(err => {
         handleError(err, instance, type)
       })
@@ -125,6 +130,7 @@ export function callWithAsyncErrorHandling(
   if (isArray(fn)) {
     const values = []
     for (let i = 0; i < fn.length; i++) {
+      // 生命周期/指令等场景可能一次注册多个 hook，这里逐个执行并分别兜底。
       values.push(callWithAsyncErrorHandling(fn[i], instance, type, args))
     }
     return values
@@ -167,6 +173,7 @@ export function handleError(
           if (
             errorCapturedHooks[i](err, exposedInstance, errorInfo) === false
           ) {
+            // `errorCaptured` 返回 false 表示“这个错误到此为止”，不再继续向上冒泡。
             return
           }
         }
@@ -175,6 +182,7 @@ export function handleError(
     }
     // app-level handling
     if (errorHandler) {
+      // 执行 app 级错误处理时同样暂停依赖追踪，避免错误处理逻辑意外卷入响应式链。
       pauseTracking()
       callWithErrorHandling(errorHandler, null, ErrorCodes.APP_ERROR_HANDLER, [
         err,
@@ -198,6 +206,7 @@ function logError(
   if (__DEV__) {
     const info = ErrorTypeStrings[type]
     if (contextVNode) {
+      // 先压入 warning 上下文，这样后面的 `warn()` 才能打印出正确组件 trace。
       pushWarningContext(contextVNode)
     }
     warn(`Unhandled error${info ? ` during execution of ${info}` : ``}`)
@@ -206,11 +215,13 @@ function logError(
     }
     // crash in dev by default so it's more noticeable
     if (throwInDev) {
+      // 开发环境默认直接抛出，让问题尽快暴露，而不是悄悄吞掉继续运行。
       throw err
     } else if (!__TEST__) {
       console.error(err)
     }
   } else if (throwInProd) {
+    // 某些生产场景（例如 SSR）更希望直接抛错中止，而不是容错继续。
     throw err
   } else {
     // recover in prod to reduce the impact on end-user

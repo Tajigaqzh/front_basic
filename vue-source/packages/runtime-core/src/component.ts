@@ -648,6 +648,9 @@ export function createComponentInstance(
   parent: ComponentInternalInstance | null,
   suspense: SuspenseBoundary | null,
 ): ComponentInternalInstance {
+  // 组件定义对象只是“静态描述”，真正参与运行时调度的是组件实例。
+  // renderer 识别到组件 vnode 后，会先在这里把它转换成实例，
+  // 后面所有 props / setup / render / effect / lifecycle 都围绕这份实例继续推进。
   const type = vnode.type as ConcreteComponent
   // inherit parent app context - or - if root, adopt from root vnode
   const appContext =
@@ -769,6 +772,8 @@ export let currentInstance: ComponentInternalInstance | null = null
  */
 export const getCurrentInstance: () => ComponentInternalInstance | null = () =>
   currentInstance || currentRenderingInstance
+// 这里把 render 阶段的 `currentRenderingInstance` 也纳入兜底，
+// 是为了让某些 helper 在函数式组件 / 渲染上下文里仍能读到“当前组件”。
 
 let internalSetCurrentInstance: (
   instance: ComponentInternalInstance | null,
@@ -795,6 +800,7 @@ if (__SSR__) {
     if (!(setters = g[key])) setters = g[key] = []
     setters.push(setter)
     return (v: any) => {
+      // 多份 Vue runtime 并存时，要把 currentInstance / SSR setup 状态同步广播给所有副本。
       if (setters.length > 1) setters.forEach(set => set(v))
       else setters[0](v)
     }
@@ -823,14 +829,17 @@ if (__SSR__) {
 export const setCurrentInstance = (instance: ComponentInternalInstance) => {
   const prev = currentInstance
   internalSetCurrentInstance(instance)
+  // 打开当前组件 effect scope，保证 setup / 生命周期里创建的副作用都归属到这个实例。
   instance.scope.on()
   return (): void => {
+    // 返回恢复函数而不是单独暴露 prev，便于外层用 try/finally 成对还原上下文。
     instance.scope.off()
     internalSetCurrentInstance(prev)
   }
 }
 
 export const unsetCurrentInstance = (): void => {
+  // 异步边界或 setup 结束后要显式清空 currentInstance，避免泄漏到后续用户代码微任务里。
   currentInstance && currentInstance.scope.off()
   internalSetCurrentInstance(null)
 }
@@ -841,6 +850,7 @@ export function validateComponentName(
   name: string,
   { isNativeTag }: AppConfig,
 ): void {
+  // 组件名若撞上内置标签或宿主原生标签，会让模板解析阶段出现“到底是组件还是原生元素”的歧义。
   if (isBuiltInTag(name) || isNativeTag(name)) {
     warn(
       'Do not use built-in or reserved HTML elements as component id: ' + name,
@@ -851,6 +861,7 @@ export function validateComponentName(
 export function isStatefulComponent(
   instance: ComponentInternalInstance,
 ): number {
+  // 这里直接复用 vnode.shapeFlag，避免每次再去根据组件定义类型重新判断。
   return instance.vnode.shapeFlag & ShapeFlags.STATEFUL_COMPONENT
 }
 
@@ -861,10 +872,32 @@ export function setupComponent(
   isSSR = false,
   optimized = false,
 ): Promise<void> | undefined {
+  /**
+   * 组件初始化总入口。
+   *
+   * 主要功能：
+   * - 初始化 props
+   * - 初始化 slots
+   * - 如果是有状态组件，则继续执行 `setupStatefulComponent()`
+   *
+   * 参数：
+   * - `instance`：当前待初始化的组件实例
+   * - `isSSR`：是否处于服务端渲染初始化阶段
+   * - `optimized`：是否允许基于编译优化结果走更快初始化路径
+   *
+   * 所在链路：
+   * - `renderer.ts -> mountComponent / updateComponent`
+   * - 渲染器创建好实例后，会先进入这里把组件运行前置状态补齐
+   */
   isSSR && setInSSRSetupState(isSSR)
 
   const { props, children } = instance.vnode
   const isStateful = isStatefulComponent(instance)
+  // setup 之前先把“输入面”固定下来：
+  // - props 解决组件从父级接收了什么
+  // - slots 解决组件拿到了什么子内容
+  //
+  // 只有这两步完成，setup/render 才能在稳定实例视图上运行。
   initProps(instance, props, isStateful, isSSR)
   initSlots(instance, children, optimized || isSSR)
 
@@ -880,6 +913,20 @@ function setupStatefulComponent(
   instance: ComponentInternalInstance,
   isSSR: boolean,
 ) {
+  /**
+   * 有状态组件初始化入口。
+   *
+   * 主要功能：
+   * - 校验组件定义
+   * - 创建组件代理 `proxy`
+   * - 执行用户编写的 `setup()`
+   * - 处理同步 / 异步 setup 返回值
+   *
+   * 依赖：
+   * - `PublicInstanceProxyHandlers`：实现模板 / render 中的 `this.xxx` 访问
+   * - `createSetupContext()`：给 setup 暴露 attrs / slots / emit / expose
+   * - `handleSetupResult()`：承接 setup 返回值并继续完成 render 安装
+   */
   const Component = instance.type as ComponentOptions
 
   if (__DEV__) {
@@ -906,17 +953,18 @@ function setupStatefulComponent(
       )
     }
   }
-  // 0. create render proxy property access cache
+  // `accessCache` 用来缓存运行时 public proxy 的取值命中路径，减少多次访问时的分支判断成本。
   instance.accessCache = Object.create(null)
-  // 1. create public instance / render proxy
+  // `proxy` 是模板 / render 执行时最常用的公开代理对象，this.xxx 基本都会落到这里。
   instance.proxy = new Proxy(instance.ctx, PublicInstanceProxyHandlers)
   if (__DEV__) {
     exposePropsOnRenderContext(instance)
   }
-  // 2. call setup()
+  // 进入用户定义的 setup()。这一步是组合式 API 的核心接入点。
   const { setup } = Component
   if (setup) {
     pauseTracking()
+    // 只有 setup 显式声明第二个参数时，才延迟创建 setupContext，避免无意义对象分配。
     const setupContext = (instance.setupContext =
       setup.length > 1 ? createSetupContext(instance) : null)
     const reset = setCurrentInstance(instance)
@@ -929,6 +977,8 @@ function setupStatefulComponent(
         setupContext,
       ],
     )
+    // `isAsyncSetup` 用来区分“当前组件能否立刻继续 mount”。
+    // 一旦 setup 返回 Promise，非 SSR 场景下就要把控制权交给 Suspense / 异步恢复逻辑。
     const isAsyncSetup = isPromise(setupResult)
     resetTracking()
     reset()
@@ -944,6 +994,7 @@ function setupStatefulComponent(
         // return the promise so server-renderer can wait on it
         return setupResult
           .then((resolvedResult: unknown) => {
+            // SSR 必须等异步 setup resolve 后再继续，否则拿不到完整渲染上下文。
             handleSetupResult(instance, resolvedResult, isSSR)
           })
           .catch(e => {
@@ -952,6 +1003,7 @@ function setupStatefulComponent(
       } else if (__FEATURE_SUSPENSE__) {
         // async setup returned Promise.
         // bail here and wait for re-entry.
+        // 客户端异步 setup 的真正渲染恢复要交给 Suspense，在这里先记住 Promise 即可。
         instance.asyncDep = setupResult
         if (__DEV__ && !instance.suspense) {
           const name = formatComponentName(instance, Component)
@@ -981,6 +1033,24 @@ export function handleSetupResult(
   setupResult: unknown,
   isSSR: boolean,
 ): void {
+  // setup 的返回值最终只会汇总成两种运行时语义：
+  // - 返回函数：直接当作组件 render
+  // - 返回对象：暴露为 setupState，供模板/this 读取
+  //
+  // 无论走哪条分支，最后都会进入 finishComponentSetup，
+  // 保证实例拥有完整 render 能力。
+  /**
+   * 处理 `setup()` 的返回值。
+   *
+   * 主要功能：
+   * - 返回函数：把它当作组件 render
+   * - 返回对象：把它当作 setupState，并自动解包 ref
+   * - 其余返回值：开发期给出告警
+   *
+   * 所在链路：
+   * - `setupStatefulComponent()` 执行完 setup 后会进入这里
+   * - 这里处理完成后会统一进入 `finishComponentSetup()`
+   */
   if (isFunction(setupResult)) {
     // setup returned an inline render function
     if (__SSR__ && (instance.type as ComponentOptions).__ssrInlineRender) {
@@ -1032,6 +1102,7 @@ export function registerRuntimeCompiler(_compile: any): void {
   compile = _compile
   installWithProxy = i => {
     if (i.render!._rc) {
+      // 运行时编译得到的 render 使用 `with` 作用域，需要专门的 proxy `has/get` 语义。
       i.withProxy = new Proxy(i.ctx, RuntimeCompiledPublicInstanceProxyHandlers)
     }
   }
@@ -1045,6 +1116,23 @@ export function finishComponentSetup(
   isSSR: boolean,
   skipOptions?: boolean,
 ): void {
+  /**
+   * 完成组件初始化的收尾工作。
+   *
+   * 主要功能：
+   * - 归一化 render / template
+   * - 必要时运行运行时编译器把 template 编译成 render
+   * - 执行 Options API 选项合并后的初始化逻辑
+   *
+   * 参数：
+   * - `instance`：当前组件实例
+   * - `isSSR`：是否为 SSR 初始化
+   * - `skipOptions`：兼容模式下是否跳过 Options API 处理
+   *
+   * 所在链路：
+   * - `setup()` 返回值处理完后，最终都会进入这里
+   * - 到这里之后，组件实例才真正具备后续 `renderComponentRoot()` 所需能力
+   */
   const Component = instance.type as ComponentOptions
 
   if (__COMPAT__) {
@@ -1055,8 +1143,11 @@ export function finishComponentSetup(
     }
   }
 
-  // template / render function normalization
-  // could be already set when returned from setup()
+  // 这里统一保证实例最终一定能拿到 `instance.render`。
+  // 它可能来自：
+  // - setup 返回的内联 render
+  // - 组件选项上的 render
+  // - template 经过运行时编译生成的 render
   if (!instance.render) {
     // only do on-the-fly compile if not in SSR - SSR on-the-fly compilation
     // is done by server-renderer
@@ -1084,6 +1175,7 @@ export function finishComponentSetup(
           ),
           componentCompilerOptions,
         )
+        // 最终编译配置会合并 app 级与组件级 compilerOptions，后者优先级更高。
         if (__COMPAT__) {
           // pass runtime compat config into the compiler
           finalCompilerOptions.compatConfig = Object.create(globalCompatConfig)
@@ -1182,6 +1274,19 @@ function getSlotsProxy(instance: ComponentInternalInstance): Slots {
 export function createSetupContext(
   instance: ComponentInternalInstance,
 ): SetupContext {
+  /**
+   * 创建传给 `setup(props, context)` 的第二个参数。
+   *
+   * 主要功能：
+   * - 暴露 `attrs`
+   * - 暴露 `slots`
+   * - 暴露 `emit`
+   * - 暴露 `expose`
+   *
+   * 依赖：
+   * - `attrsProxyHandlers`：拦截 attrs 读取并建立依赖
+   * - `getSlotsProxy()`：在开发期追踪 `$slots` 访问
+   */
   const expose: SetupContext['expose'] = exposed => {
     if (__DEV__) {
       if (instance.exposed) {
@@ -1215,10 +1320,12 @@ export function createSetupContext(
       get attrs() {
         return (
           attrsProxy ||
+          // attrs proxy 要延迟创建，避免 setup 从未访问 attrs 时也平白多一层代理对象。
           (attrsProxy = new Proxy(instance.attrs, attrsProxyHandlers) as Attrs)
         )
       },
       get slots() {
+        // slots 同样按需创建代理，开发期用于更精细地追踪访问与给出调试行为。
         return slotsProxy || (slotsProxy = getSlotsProxy(instance))
       },
       get emit() {
@@ -1239,6 +1346,24 @@ export function createSetupContext(
 export function getComponentPublicInstance(
   instance: ComponentInternalInstance,
 ): ComponentPublicInstance | ComponentInternalInstance['exposed'] | null {
+  /**
+   * 读取组件对外暴露的公开实例。
+   *
+   * 优先级：
+   * - 若组件显式 `expose()` 过，则返回 expose proxy
+   * - 否则返回标准 public proxy
+   */
+  /**
+   * 返回“外部可见”的组件实例对象。
+   *
+   * 主要功能：
+   * - 如果组件调用过 `expose()`，优先返回 expose 结果代理
+   * - 否则返回默认的组件 public proxy
+   *
+   * 为什么需要这层：
+   * - 组件内部实例字段很多是运行时私有状态，不能直接全部暴露给模板 ref / 父组件
+   * - expose 机制允许组件显式控制外部能访问哪些能力
+   */
   if (instance.exposed) {
     return (
       instance.exposeProxy ||
@@ -1268,6 +1393,14 @@ export function getComponentName(
   Component: ConcreteComponent,
   includeInferred = true,
 ): string | false | undefined {
+  /**
+   * 读取组件名。
+   *
+   * 取值顺序：
+   * - 函数组件优先用 `displayName / name`
+   * - 对象组件用 `name`
+   * - 允许时再退回到编译阶段推断出的 `__name`
+   */
   return isFunction(Component)
     ? Component.displayName || Component.name
     : Component.name || (includeInferred && Component.__name)
@@ -1278,6 +1411,14 @@ export function formatComponentName(
   Component: ConcreteComponent,
   isRoot = false,
 ): string {
+  /**
+   * 格式化组件名，主要用于报错、警告、调试信息。
+   *
+   * 主要功能：
+   * - 尽量从组件自身、文件名、注册表反推可读名称
+   * - 最终把 kebab / snake 风格统一转成首字母大写形式
+   * - 如果仍然推不出来，则根组件返回 `App`，其他组件返回 `Anonymous`
+   */
   let name = getComponentName(Component)
   if (!name && Component.__file) {
     const match = Component.__file.match(/([^/\\]+)\.\w+$/)

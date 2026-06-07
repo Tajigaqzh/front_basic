@@ -7,8 +7,11 @@ import {
   type SSRBufferItem,
   type SSRContext,
   createBuffer,
-} from '../render'
+} from '../buffer'
 
+// Teleport 在 SSR 时不会把目标内容直接插入当前位置，
+// 而是把内容暂存到 `context.__teleportBuffers[target]`，
+// 最后由 `resolveTeleports` 统一展开到 `context.teleports`。
 export function ssrRenderTeleport(
   parentPush: PushFn,
   contentRenderFn: (push: PushFn) => void,
@@ -24,13 +27,14 @@ export function ssrRenderTeleport(
   const teleportBuffers =
     context.__teleportBuffers || (context.__teleportBuffers = {})
   const targetBuffer = teleportBuffers[target] || (teleportBuffers[target] = [])
-  // record current index of the target buffer to handle nested teleports
-  // since the parent needs to be rendered before the child
+
+  // 插入点需要记录当前位置，才能正确处理“父 teleport 里再套子 teleport”的顺序。
   const bufferIndex = targetBuffer.length
 
   let teleportContent: SSRBufferItem
 
   if (disabled) {
+    // disabled 时语义退化成原地渲染，但仍要输出锚点，保持 hydration 对齐。
     contentRenderFn(parentPush)
     teleportContent = `<!--teleport start anchor--><!--teleport anchor-->`
   } else {

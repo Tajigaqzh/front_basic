@@ -30,6 +30,17 @@ export type TemplateRef<T = unknown> = Readonly<ShallowRef<T | null>>
 export function useTemplateRef<T = unknown, Keys extends string = string>(
   key: Keys,
 ): TemplateRef<T> {
+  /**
+   * 创建一个与模板字符串 ref 同步联动的 shallowRef。
+   *
+   * 主要功能：
+   * - 在 setup 阶段为某个 `ref="xxx"` 预留响应式入口
+   * - 通过实例 `refs` 上的 getter/setter 与渲染器 `setRef()` 对接
+   * - 最终让用户在 setup 中拿到一个会随挂载/更新自动变化的 ref 对象
+   *
+   * 参数：
+   * - `key`：模板中声明的字符串 ref 名
+   */
   const i = getCurrentInstance()
   // `r` 保存真正暴露给用户的 ref 值，初始为 null，挂载/更新后由渲染器回填。
   const r = shallowRef(null)
@@ -53,7 +64,8 @@ export function useTemplateRef<T = unknown, Keys extends string = string>(
   }
   const ret = __DEV__ ? readonly(r) : r
   if (__DEV__) {
-    // 开发环境记录下来，渲染器在设置字符串 ref 时可以识别“这是 useTemplateRef 自己的 key”。
+    // 开发环境记录下来，渲染器在设置字符串 ref 时可以识别“这是 useTemplateRef 自己的 key”，
+    // 从而避免 `refs.xxx = ...` 和 shallowRef.value = ... 两边重复覆盖。
     knownTemplateRefs.add(ret)
   }
   return ret

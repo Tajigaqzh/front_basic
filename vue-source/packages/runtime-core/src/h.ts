@@ -214,29 +214,36 @@ export function h<P>(
 export function h(type: any, propsOrChildren?: any, children?: any): VNode {
   try {
     // #6913 disable tracking block in h function
+    // 手写 `h()` 不应意外影响当前 block 收集，否则会污染编译优化依赖的动态节点信息。
     setBlockTracking(-1)
     const l = arguments.length
     if (l === 2) {
       if (isObject(propsOrChildren) && !isArray(propsOrChildren)) {
         // single vnode without props
         if (isVNode(propsOrChildren)) {
+          // 单个 vnode 第二参要视作 children，而不是 props 对象。
           return createVNode(type, null, [propsOrChildren])
         }
         // props without children
+        // 普通对象则按 props 处理，这是 `h(type, props)` 的最常见形态。
         return createVNode(type, propsOrChildren)
       } else {
         // omit props
+        // 非对象第二参一律视作 children，形成 `h(type, children)` 简写。
         return createVNode(type, null, propsOrChildren)
       }
     } else {
       if (l > 3) {
+        // 超过 3 个参数时，后续参数全部折叠成 children 数组。
         children = Array.prototype.slice.call(arguments, 2)
       } else if (l === 3 && isVNode(children)) {
+        // 单个 vnode child 统一包成数组，和多子节点形态对齐。
         children = [children]
       }
       return createVNode(type, propsOrChildren, children)
     }
   } finally {
+    // 无论成功还是抛错，都要把 block tracking 状态恢复回去。
     setBlockTracking(1)
   }
 }

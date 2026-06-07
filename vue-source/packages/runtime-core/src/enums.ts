@@ -7,6 +7,7 @@
 
 // 这些短字符串会直接作为 `ComponentInternalInstance` 上的属性键使用。
 export enum LifecycleHooks {
+  // 之所以用短字段编码，而不是完整字符串，是为了减少每个组件实例上生命周期数组键的体积。
   BEFORE_CREATE = 'bc',
   CREATED = 'c',
   BEFORE_MOUNT = 'bm',

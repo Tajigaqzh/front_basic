@@ -39,7 +39,23 @@ export function injectHook(
   target: ComponentInternalInstance | null = currentInstance,
   prepend: boolean = false,
 ): Function | undefined {
+  /**
+   * 把一个生命周期钩子注册到目标组件实例上。
+   *
+   * 主要功能：
+   * - 为用户钩子包一层统一错误处理与 `currentInstance` 恢复逻辑
+   * - 缓存包装结果，便于调度器后续去重
+   * - 按需插入到当前生命周期数组头部或尾部
+   *
+   * 参数：
+   * - `type`：生命周期枚举值
+   * - `hook`：用户传入的原始钩子
+   * - `target`：目标组件实例，默认取当前活跃实例
+   * - `prepend`：是否插到队列前面
+   */
   if (target) {
+    // 生命周期注册本质上只是把钩子挂到实例上的对应数组里；
+    // 真正执行时机并不在这里，而在 renderer 的 mount/update/unmount 流程中统一调度。
     const hooks = target[type] || (target[type] = [])
     // cache the error handling wrapper for injected hooks so the same hook
     // can be properly deduped by the scheduler. "__weh" stands for "with error
@@ -81,7 +97,15 @@ const createHook =
     hook: T,
     target: ComponentInternalInstance | null = currentInstance,
   ): void => {
-    // post-create lifecycle registrations are noops during SSR (except for serverPrefetch)
+    /**
+     * 生成某个具体生命周期的注册函数。
+     *
+     * 主要功能：
+     * - 根据生命周期类型统一复用 `injectHook`
+     * - 在 SSR setup 阶段过滤掉不该注册的客户端生命周期
+     */
+    // SSR setup 阶段大部分客户端生命周期都没有意义，
+    // 因为服务端不会真正经历 mounted/updated 这类 DOM 生命周期。
     if (
       !isInSSRComponentSetup ||
       lifecycle === LifecycleHooks.SERVER_PREFETCH
@@ -132,5 +156,14 @@ export function onErrorCaptured<TError = Error>(
   hook: ErrorCapturedHook<TError>,
   target: ComponentInternalInstance | null = currentInstance,
 ): void {
+  /**
+   * 注册错误捕获钩子。
+   *
+   * 这个钩子会在当前组件子树内部出现运行时错误时被调用，
+   * 让组件有机会：
+   * - 本地吞掉错误
+   * - 做上报
+   * - 渲染降级 UI
+   */
   injectHook(LifecycleHooks.ERROR_CAPTURED, hook, target)
 }

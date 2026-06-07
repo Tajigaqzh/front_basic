@@ -18,6 +18,7 @@ export const ssrInjectCssVars: NodeTransform = (node, context) => {
   // the code is injected in ssrCodegenTransform when creating the
   // ssr transform context
   if (node.type === NodeTypes.ROOT) {
+    // 先把 `_cssVars` 标成已知标识符，避免 transformExpression 再给它加 `_ctx.` 前缀。
     context.identifiers._cssVars = 1
   }
 
@@ -43,6 +44,7 @@ function injectCssVars(node: RootNode | TemplateChildNode) {
     !findDir(node, 'for')
   ) {
     if (node.tag === 'suspense' || node.tag === 'Suspense') {
+      // Suspense 自己不是最终实际 DOM 外壳，要继续把 css vars 往它的 slot 内容里注。
       for (const child of node.children) {
         if (
           child.type === NodeTypes.ELEMENT &&
@@ -55,6 +57,8 @@ function injectCssVars(node: RootNode | TemplateChildNode) {
         }
       }
     } else {
+      // 实现方式很直接：在根级可落地元素/组件上额外挂一个 `v-bind="_cssVars"`，
+      // 让后面的 props 构建流程自然把样式变量并进去。
       node.props.push({
         type: NodeTypes.DIRECTIVE,
         name: 'bind',

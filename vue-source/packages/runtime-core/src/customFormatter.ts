@@ -22,6 +22,7 @@ import type { ComponentPublicInstance } from './componentPublicInstance'
 export function initCustomFormatter(): void {
   /* eslint-disable no-restricted-globals */
   if (!__DEV__ || typeof window === 'undefined') {
+    // 生产环境或非浏览器环境都不需要注册 DevTools 自定义格式化器。
     return
   }
 
@@ -55,6 +56,7 @@ export function initCustomFormatter(): void {
         pauseTracking()
         const value = obj.value
         resetTracking()
+        // 读取 ref.value 时暂停追踪，避免“打开控制台看一下”也把调试器访问记成业务依赖。
         return [
           'div',
           {},
@@ -85,6 +87,7 @@ export function initCustomFormatter(): void {
       return null
     },
     hasBody(obj: unknown) {
+      // 只有 Vue 组件公开实例在展开时需要额外展示分块内容。
       return obj && (obj as any).__isVue
     },
     /**
@@ -134,6 +137,7 @@ export function initCustomFormatter(): void {
       ],
       ['object', { object: instance }],
     ])
+    // 最后一块故意把内部实例 `$` 也暴露出来，便于深挖 runtime 内部字段。
     return blocks
   }
 
@@ -189,6 +193,7 @@ export function initCustomFormatter(): void {
     // 从实例上下文里筛出某一类来源的键，例如 computed / inject。
     const Comp = instance.type
     if (isFunction(Comp)) {
+      // 函数组件没有 Options API 选项对象，这类来源信息不存在。
       return
     }
     const extracted: Record<string, any> = {}
@@ -229,6 +234,7 @@ export function initCustomFormatter(): void {
   }
 
   if ((window as any).devtoolsFormatters) {
+    // 已有 formatter 数组时直接追加，避免覆盖其他库注册的自定义格式化器。
     ;(window as any).devtoolsFormatters.push(formatter)
   } else {
     ;(window as any).devtoolsFormatters = [formatter]

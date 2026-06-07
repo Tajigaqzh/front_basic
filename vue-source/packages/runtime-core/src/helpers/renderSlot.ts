@@ -56,6 +56,19 @@ export function renderSlot(
   fallback?: () => VNodeArrayChildren,
   noSlotted?: boolean,
 ): VNode {
+  /**
+   * 运行时渲染一个 `<slot />`。
+   *
+   * 主要功能：
+   * - 在当前组件 slots 容器中找到指定名字的插槽函数
+   * - 传入作用域参数执行它
+   * - 没有有效内容时退回 fallback
+   * - 最终把结果包装成 Fragment vnode，交回渲染器继续 patch
+   *
+   * 特殊分支：
+   * - 自定义元素模式下直接输出真实 `<slot>` 宿主节点
+   * - 编译插槽会临时关闭 `_d`，避免 block tracking 被错误禁用
+   */
   if (
     currentRenderingInstance!.ce ||
     (currentRenderingInstance!.parent &&
@@ -78,6 +91,7 @@ export function renderSlot(
     )
   }
 
+  // `slot` 是当前命中的标准化插槽函数。
   let slot = slots[name]
 
   if (__DEV__ && slot && slot.length > 1) {
@@ -97,7 +111,9 @@ export function renderSlot(
     ;(slot as ContextualRenderFn)._d = false
   }
   openBlock()
+  // `validSlotContent` 表示这次插槽执行后是否真的产出了可渲染内容。
   const validSlotContent = slot && ensureValidVNode(slot(props))
+  // `slotKey` 用来区分动态条件插槽不同分支，避免 fallback 和真实内容错误复用。
   const slotKey =
     props.key ||
     // slot content array of a dynamic conditional slot may have a branch
@@ -137,6 +153,13 @@ export function renderSlot(
 export function ensureValidVNode(
   vnodes: VNodeArrayChildren,
 ): VNodeArrayChildren | null {
+  /**
+   * 判断一组插槽返回值里是否包含真正可渲染的内容。
+   *
+   * 返回规则：
+   * - 只要存在任意真实节点，就原样返回整组 vnode 数组
+   * - 如果整组内容都只是注释或空 Fragment，则返回 `null`
+   */
   return vnodes.some(child => {
     if (!isVNode(child)) return true
     if (child.type === Comment) return false

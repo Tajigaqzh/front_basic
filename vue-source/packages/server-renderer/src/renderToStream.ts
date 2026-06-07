@@ -7,17 +7,25 @@ import {
   ssrUtils,
 } from '@vue-source/runtime-dom'
 import { isPromise, isString } from '@vue-source/shared'
-import { type SSRBuffer, type SSRContext, renderComponentVNode } from './render'
+import { type SSRBuffer, type SSRContext } from './buffer'
+import { renderComponentVNode } from './render'
 import type { Readable, Writable } from 'node:stream'
 import { resolveTeleports } from './renderToString'
 
 const { isVNode } = ssrUtils
+const nodeRequire =
+  typeof require === 'function'
+    ? require
+    : ((0, eval)('require') as (id: string) => any)
 
+// 统一的最小流接口，Node/Web 流最终都会适配成这两个方法。
 export interface SimpleReadable {
   push(chunk: string | null): void
   destroy(err: any): void
 }
 
+// 流式渲染和 `renderToString` 共用相同的 buffer 结构，
+// 区别只是这里边展开边推送，而不是最终合并成一个字符串。
 async function unrollBuffer(
   buffer: SSRBuffer,
   stream: SimpleReadable,
@@ -35,19 +43,17 @@ async function unrollBuffer(
       }
     }
   } else {
-    // sync buffer can be more efficiently unrolled without unnecessary await
-    // ticks
+    // 同步 buffer 直接递归展开，避免每层都产生 await 开销。
     unrollBufferSync(buffer, stream)
   }
 }
 
 function unrollBufferSync(buffer: SSRBuffer, stream: SimpleReadable) {
   for (let i = 0; i < buffer.length; i++) {
-    let item = buffer[i]
+    const item = buffer[i]
     if (isString(item)) {
       stream.push(item)
     } else {
-      // since this is a sync buffer, child buffers are never promises
       unrollBufferSync(item as SSRBuffer, stream)
     }
   }
@@ -59,7 +65,6 @@ export function renderToSimpleStream<T extends SimpleReadable>(
   stream: T,
 ): T {
   if (isVNode(input)) {
-    // raw vnode, wrap with app (for context)
     return renderToSimpleStream(
       createApp({ render: () => input }),
       context,
@@ -67,10 +72,8 @@ export function renderToSimpleStream<T extends SimpleReadable>(
     )
   }
 
-  // rendering an app
   const vnode = createVNode(input._component, input._props)
   vnode.appContext = input._context
-  // provide the ssr context to the tree
   input.provide(ssrContextKey, context)
 
   Promise.resolve(renderComponentVNode(vnode))
@@ -108,8 +111,9 @@ export function renderToNodeStream(
   input: App | VNode,
   context: SSRContext = {},
 ): Readable {
+  // 这里只有 CJS 构建能懒加载 node:stream，ESM 版本故意不内建 Node 绑定。
   const stream: Readable = __CJS__
-    ? new (require('node:stream').Readable)({ read() {} })
+    ? new (nodeRequire('node:stream').Readable)({ read() {} })
     : null
 
   if (!stream) {
@@ -187,7 +191,7 @@ export function pipeToWebWritable(
   const writer = writable.getWriter()
   const encoder = new TextEncoder()
 
-  // #4287 CloudFlare workers do not implement `ready` property
+  // Cloudflare Workers 的 writer 没有标准的 `ready`，这里做兼容探测。
   let hasReady = false
   try {
     hasReady = isPromise(writer.ready)

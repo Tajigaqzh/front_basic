@@ -48,6 +48,7 @@ export const isStaticExp = (p: JSChildNode): p is SimpleExpressionNode =>
   p.type === NodeTypes.SIMPLE_EXPRESSION && p.isStatic
 
 export function isCoreComponent(tag: string): symbol | void {
+  // 这些内建组件不走普通 resolveComponent，而是直接映射到 runtime symbol。
   switch (tag) {
     case 'Teleport':
     case 'teleport':
@@ -66,6 +67,7 @@ export function isCoreComponent(tag: string): symbol | void {
 
 const nonIdentifierRE = /^$|^\d|[^\$\w\xA0-\uFFFF]/
 export const isSimpleIdentifier = (name: string): boolean =>
+  // 判断一个字符串能否安全当作 JS 标识符使用。
   !nonIdentifierRE.test(name)
 
 enum MemberExpLexState {
@@ -89,6 +91,7 @@ const getExpSource = (exp: ExpressionNode): string =>
  * expressions and false positives are invalid expressions in the first place.
  */
 export const isMemberExpressionBrowser = (exp: ExpressionNode): boolean => {
+  // 浏览器构建不引 Babel，这里用轻量词法扫描近似判断成员表达式。
   // remove whitespaces around . or [ first
   const path = getExpSource(exp)
     .trim()
@@ -165,6 +168,7 @@ export const isMemberExpressionNode: (
 ) => boolean = __BROWSER__
   ? (NOOP as any)
   : (exp, context) => {
+      // 非浏览器构建直接用 Babel AST 精确判断。
       try {
         let ret: Node =
           exp.ast ||
@@ -201,6 +205,7 @@ export const isFnExpressionNode: (
 ) => boolean = __BROWSER__
   ? (NOOP as any)
   : (exp, context) => {
+      // 函数表达式判断同理：Node 环境走 AST，浏览器环境走正则近似。
       try {
         let ret: Node =
           exp.ast ||
@@ -236,6 +241,7 @@ export function advancePositionWithClone(
   source: string,
   numberOfCharacters: number = source.length,
 ): Position {
+  // 返回“前进后”的新 Position，不修改原对象。
   return advancePositionWithMutation(
     {
       offset: pos.offset,
@@ -254,6 +260,7 @@ export function advancePositionWithMutation(
   source: string,
   numberOfCharacters: number = source.length,
 ): Position {
+  // 高频路径里直接原地改 Position，减少对象分配。
   let linesCount = 0
   let lastNewLinePos = -1
   for (let i = 0; i < numberOfCharacters; i++) {
@@ -285,6 +292,7 @@ export function findDir(
   name: string | RegExp,
   allowEmpty: boolean = false,
 ): DirectiveNode | undefined {
+  // 在元素 props 中查指令，是 transform 阶段的高频助手。
   for (let i = 0; i < node.props.length; i++) {
     const p = node.props[i]
     if (
@@ -303,6 +311,7 @@ export function findProp(
   dynamicOnly: boolean = false,
   allowEmpty: boolean = false,
 ): ElementNode['props'][0] | undefined {
+  // 统一查普通 attribute 和 `v-bind:name` 形式的 prop。
   for (let i = 0; i < node.props.length; i++) {
     const p = node.props[i]
     if (p.type === NodeTypes.ATTRIBUTE) {
@@ -324,10 +333,12 @@ export function isStaticArgOf(
   arg: DirectiveNode['arg'],
   name: string,
 ): boolean {
+  // 判断某个指令参数是不是静态且名字正好为指定值，例如 `v-bind:name`。
   return !!(arg && isStaticExp(arg) && arg.content === name)
 }
 
 export function hasDynamicKeyVBind(node: ElementNode): boolean {
+  // 检查是否存在 `v-bind="obj"` 或 `v-bind:[foo]` 这类会引入动态 key 的情况。
   return node.props.some(
     p =>
       p.type === NodeTypes.DIRECTIVE &&
@@ -341,6 +352,7 @@ export function hasDynamicKeyVBind(node: ElementNode): boolean {
 export function isText(
   node: TemplateChildNode,
 ): node is TextNode | InterpolationNode {
+  // 把“可直接视为文本内容”的节点收拢到一类，供 transformText 等逻辑复用。
   return node.type === NodeTypes.INTERPOLATION || node.type === NodeTypes.TEXT
 }
 
@@ -372,6 +384,8 @@ function getUnnormalizedProps(
   props: PropsExpression | '{}',
   callPath: CallExpression[] = [],
 ): [PropsExpression | '{}', CallExpression[]] {
+  // `normalizeProps(guardReactiveProps(x))` 这类包装需要一路剥开，
+  // 才能拿到真实 props 对象和它外层的 helper 调用链。
   if (
     props &&
     !isString(props) &&
@@ -392,6 +406,8 @@ export function injectProp(
   prop: Property,
   context: TransformContext,
 ): void {
+  // 往现有 vnode/renderSlot 调用里安全注入一个 prop，
+  // 常用于补 key、给 slot 调用补 props 等场景。
   let propsWithInjection: ObjectExpression | CallExpression | undefined
   /**
    * 1. mergeProps(...)
@@ -417,8 +433,11 @@ export function injectProp(
   }
 
   if (props == null || isString(props)) {
+    // 原来没有 props，直接创建一个对象包进去。
     propsWithInjection = createObjectExpression([prop])
   } else if (props.type === NodeTypes.JS_CALL_EXPRESSION) {
+    // 已经是 mergeProps/toHandlers/normalizeProps 这类调用时，
+    // 要尽量注入到最里层真实 props，而不是粗暴包在最外层。
     // merged props... add ours
     // only inject key to object literal if it's the first argument so that
     // if doesn't override user provided keys
@@ -441,11 +460,13 @@ export function injectProp(
     }
     !propsWithInjection && (propsWithInjection = props)
   } else if (props.type === NodeTypes.JS_OBJECT_EXPRESSION) {
+    // 原本就是对象字面量时，直接头插即可。
     if (!hasProp(prop, props)) {
       props.properties.unshift(prop)
     }
     propsWithInjection = props
   } else {
+    // 单个表达式 props 只能通过 mergeProps 再包一层完成注入。
     // single v-bind with expression, return a merged replacement
     propsWithInjection = createCallExpression(context.helper(MERGE_PROPS), [
       createObjectExpression([prop]),
@@ -475,6 +496,7 @@ export function injectProp(
 
 // check existing key to avoid overriding user provided keys
 function hasProp(prop: Property, props: ObjectExpression) {
+  // 防止注入同名 key 覆盖用户显式传入的 prop。
   let result = false
   if (prop.key.type === NodeTypes.SIMPLE_EXPRESSION) {
     const propKeyName = prop.key.content
@@ -491,6 +513,7 @@ export function toValidAssetId(
   name: string,
   type: 'component' | 'directive' | 'filter',
 ): string {
+  // 把任意组件/指令名转成合法 JS 变量名，供 codegen 生成局部常量。
   // see issue#4422, we need adding identifier on validAssetId if variable `name` has specific character
   return `_${type}_${name.replace(/[^\w]/g, (searchValue, replaceValue) => {
     return searchValue === '-' ? '_' : name.charCodeAt(replaceValue).toString()
@@ -507,6 +530,8 @@ export function hasScopeRef(
     | undefined,
   ids: TransformContext['identifiers'],
 ): boolean {
+  // 判断一棵节点/表达式子树里是否引用了当前作用域变量，
+  // 这会直接影响 handler cache、slot 优化、static hoist 等决策。
   if (!node || Object.keys(ids).length === 0) {
     return false
   }
@@ -561,6 +586,7 @@ export function hasScopeRef(
 export function getMemoedVNodeCall(
   node: BlockCodegenNode | MemoExpression,
 ): VNodeCall | RenderSlotCall {
+  // v-memo 会把 vnode 再包一层 withMemo，这里用于取回内部真实 vnode 调用。
   if (node.type === NodeTypes.JS_CALL_EXPRESSION && node.callee === WITH_MEMO) {
     return node.arguments[1].returns as VNodeCall
   } else {
@@ -571,6 +597,7 @@ export function getMemoedVNodeCall(
 export const forAliasRE: RegExp = /([\s\S]*?)\s+(?:in|of)\s+(\S[\s\S]*)/
 
 export function isAllWhitespace(str: string): boolean {
+  // 按 tokenizer 的 whitespace 定义逐字符判断，避免直接依赖 JS 的 trim 语义。
   for (let i = 0; i < str.length; i++) {
     if (!isWhitespace(str.charCodeAt(i))) {
       return false
@@ -580,6 +607,7 @@ export function isAllWhitespace(str: string): boolean {
 }
 
 export function isWhitespaceText(node: TemplateChildNode): boolean {
+  // 既支持原始 TextNode，也支持 transformText 后包过一层的 TEXT_CALL。
   return (
     (node.type === NodeTypes.TEXT && isAllWhitespace(node.content)) ||
     (node.type === NodeTypes.TEXT_CALL && isWhitespaceText(node.content))
@@ -587,5 +615,6 @@ export function isWhitespaceText(node: TemplateChildNode): boolean {
 }
 
 export function isCommentOrWhitespace(node: TemplateChildNode): boolean {
+  // v-if / v-slot 邻接关系判断时经常需要跳过注释和纯空白文本。
   return node.type === NodeTypes.COMMENT || isWhitespaceText(node)
 }

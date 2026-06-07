@@ -9,9 +9,9 @@ import {
   createFunctionExpression,
 } from '@vue-source/compiler-dom'
 import {
-  type SSRTransformContext,
   processChildrenAsStatement,
-} from '../ssrCodegenTransform'
+} from '../ssrTransformContext'
+import type { SSRTransformContext } from '../ssrTransformTypes'
 import { SSR_RENDER_SUSPENSE } from '../runtimeHelpers'
 
 const wipMap = new WeakMap<ComponentNode, WIPEntry>()
@@ -31,6 +31,8 @@ export function ssrTransformSuspense(
 ) {
   return (): void => {
     if (node.children.length) {
+      // 和组件 slots 一样，Suspense 的 slot 结构必须先在第一阶段借助
+      // core 的 buildSlots 完成作用域分析，第二阶段再补 SSR 函数体。
       const wipEntry: WIPEntry = {
         slotsExp: null!, // to be immediately set
         wipSlots: [],
@@ -71,6 +73,7 @@ export function ssrProcessSuspense(
   const { slotsExp, wipSlots } = wipEntry
   for (let i = 0; i < wipSlots.length; i++) {
     const slot = wipSlots[i]
+    // 第二阶段才把每个 slot 的 body 真正填成 `_push(...)` 语句块。
     slot.fn.body = processChildrenAsStatement(slot, context)
   }
   // _push(ssrRenderSuspense(slots))

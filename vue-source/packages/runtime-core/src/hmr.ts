@@ -26,6 +26,16 @@ export let isHmrUpdating = false
  * 作用：切换 HMR 更新标记，并返回切换前的旧值。
  */
 export const setHmrUpdating = (v: boolean): boolean => {
+  /**
+   * 切换“当前是否处于 HMR 更新期”的全局标记。
+   *
+   * 返回值：
+   * - 返回切换前的旧值，方便外层在必要时做成对恢复
+   *
+   * 为什么需要这个标记：
+   * - 渲染器、slot 更新、组件比对逻辑在 HMR 期间要走更保守路径
+   * - 否则某些本可跳过的优化会把热更新内容错误复用掉
+   */
   try {
     return isHmrUpdating
   } finally {
@@ -37,6 +47,8 @@ export const hmrDirtyComponents: Map<
   ConcreteComponent,
   Set<ComponentInternalInstance>
 > = new Map<ConcreteComponent, Set<ComponentInternalInstance>>()
+// `hmrDirtyComponents` 记录“本轮 HMR 中必须强制按替换组件处理”的组件及实例集合。
+// 渲染器命中这些组件时不会走普通更新优化，而会更激进地刷新定义与子树。
 
 /**
  * 作用：暴露给外部 HMR 工具链的运行时接口。
@@ -53,6 +65,7 @@ export interface HMRRuntime {
 // Note: for a component to be eligible for HMR it also needs the __hmrId option
 // to be set so that its instances can be registered / removed.
 if (__DEV__) {
+  // 把运行时能力挂到全局对象，构建工具拿到更新通知后就能直接调用这里的接口。
   getGlobalThis().__VUE_HMR_RUNTIME__ = {
     createRecord: tryWrap(createRecord),
     rerender: tryWrap(rerender),
@@ -69,11 +82,24 @@ const map: Map<
     instances: Set<ComponentInternalInstance>
   }
 > = new Map()
+// `map` 是 HMR 主索引：
+// - key: 组件的 `__hmrId`
+// - value: 该组件当前基准定义 + 页面上所有活跃实例
+// 后续 rerender/reload 都会先从这里找到受影响目标。
 
 /**
  * 作用：把组件实例登记到对应 hmr id 的记录里。
  */
 export function registerHMR(instance: ComponentInternalInstance): void {
+  /**
+   * 把一个活跃组件实例注册到对应的 HMR 记录中。
+   *
+   * 主要功能：
+   * - 依据组件的 `__hmrId` 找到或创建记录
+   * - 把当前实例放进该记录的实例集合
+   *
+   * 这样后续收到热更新通知时，运行时才能批量找到所有受影响实例。
+   */
   const id = instance.type.__hmrId!
   let record = map.get(id)
   if (!record) {
@@ -84,6 +110,10 @@ export function registerHMR(instance: ComponentInternalInstance): void {
 }
 
 export function unregisterHMR(instance: ComponentInternalInstance): void {
+  /**
+   * 从 HMR 记录中移除一个即将卸载或已失效的组件实例。
+   */
+  // 组件卸载后必须及时移除，否则热更新时会错误地尝试更新已销毁实例。
   map.get(instance.type.__hmrId!)!.instances.delete(instance)
 }
 
@@ -95,17 +125,32 @@ export function unregisterHMR(instance: ComponentInternalInstance): void {
  * - `false`：记录已存在
  */
 function createRecord(id: string, initialDef: HMRComponent): boolean {
+  /**
+   * 为某个 `__hmrId` 建立 HMR 记录。
+   *
+   * 记录里保存两类信息：
+   * - `initialDef`：当前组件定义基准版本
+   * - `instances`：页面上所有活跃实例
+   */
   if (map.has(id)) {
     return false
   }
   map.set(id, {
+    // `initialDef` 会被后续热更新原地改写，保证未来新实例也能拿到最新定义。
     initialDef: normalizeClassComponent(initialDef),
+    // `instances` 保存当前页面上所有同 hmr id 的活跃实例。
     instances: new Set(),
   })
   return true
 }
 
 function normalizeClassComponent(component: HMRComponent): ComponentOptions {
+  /**
+   * 把 class 组件统一转成内部真正可更新的 options 对象。
+   *
+   * HMR 后续所有“覆盖定义 / 替换 render”操作，
+   * 都希望落在统一的对象形态上。
+   */
   return isClassComponent(component) ? component.__vccOpts : component
 }
 
@@ -113,6 +158,15 @@ function normalizeClassComponent(component: HMRComponent): ComponentOptions {
  * 作用：仅替换组件 render 函数，尽量保留实例状态。
  */
 function rerender(id: string, newRender?: Function): void {
+  /**
+   * 仅热替换组件 render 函数。
+   *
+   * 使用场景：
+   * - 组件脚本状态结构没变
+   * - 只需要让视图重新渲染即可
+   *
+   * 这一条路径会尽量保留现有组件实例和本地状态。
+   */
   const record = map.get(id)
   if (!record) {
     return
@@ -124,9 +178,11 @@ function rerender(id: string, newRender?: Function): void {
   // 先拍快照，避免更新过程中实例集合发生增删。
   ;[...record.instances].forEach(instance => {
     if (newRender) {
+      // 既要更新实例上的 render，也要更新组件定义上的 render，覆盖当前与未来实例两条链路。
       instance.render = newRender as InternalRenderFunction
       normalizeClassComponent(instance.type as HMRComponent).render = newRender
     }
+    // render 缓存基于旧渲染函数生成，热替换后必须清空。
     instance.renderCache = []
     // 这个标记会让带 slot 的子组件也进入强制更新链路。
     isHmrUpdating = true
@@ -146,6 +202,18 @@ function rerender(id: string, newRender?: Function): void {
  * - `reload` 会清理缓存并促使父级重新 patch 当前组件
  */
 function reload(id: string, newComp: HMRComponent): void {
+  /**
+   * 热替换整个组件定义。
+   *
+   * 使用场景：
+   * - 不只是 render 变了
+   * - props / emits / setup / 选项等任一部分可能都发生了变化
+   *
+   * 这一条路径会：
+   * - 更新定义对象
+   * - 清空归一化缓存
+   * - 借父组件重新 patch，迫使当前组件整段替换
+   */
   const record = map.get(id)
   if (!record) return
 
@@ -164,6 +232,7 @@ function reload(id: string, newComp: HMRComponent): void {
     if (!dirtyInstances) {
       // 1. Update existing comp definition to match new one
       if (oldComp !== record.initialDef) {
+        // 某些实例持有的可能不是最初那份定义对象，也要同步原地改写。
         updateComponentDef(oldComp, newComp)
       }
       // 这个脏标记会被渲染器读取；命中后 patch 会走组件替换，而不是普通更新。
@@ -225,8 +294,17 @@ function updateComponentDef(
   oldComp: ComponentOptions,
   newComp: ComponentOptions,
 ) {
+  /**
+   * 原地把新组件定义覆盖到旧定义对象上。
+   *
+   * 为什么要“原地改”：
+   * - 当前页面里很多地方可能还持有旧定义对象引用
+   * - 直接替换引用会让这些旧引用失效
+   * - 原地覆盖才能让现有实例、缓存和注册表都看到最新定义
+   */
   extend(oldComp, newComp)
   for (const key in oldComp) {
+    // 新版本里已经删除的字段也要从旧定义上移除，避免旧选项继续残留生效。
     if (key !== '__file' && !(key in newComp)) {
       delete oldComp[key]
     }
@@ -237,6 +315,13 @@ function updateComponentDef(
  * 作用：统一包装 HMR runtime 对外方法，避免热更新异常直接打断工具链。
  */
 function tryWrap(fn: (id: string, arg: any) => any): Function {
+  /**
+   * 给对外暴露的 HMR runtime 方法套一层兜底异常处理。
+   *
+   * 目标不是吞掉错误，而是：
+   * - 避免工具链调用链直接崩掉
+   * - 明确提示开发者退回整页刷新
+   */
   return (id: string, arg: any) => {
     try {
       return fn(id, arg)

@@ -52,10 +52,12 @@ import {
   isPlainObject,
   toNumber,
 } from '@vue-source/shared'
-import { createApp, createSSRApp, render } from '.'
+import { createApp, createSSRApp, render } from './renderer'
 
 // 这个哨兵值表示“当前属性应当被删除”，而不是设置成普通值。
 const REMOVAL = {}
+// 不能直接用 `undefined` 表示“删除 prop”，因为外部设置 prop 时本来就可能合法传入 `undefined`。
+// 所以这里单独用一个哨兵对象区分“显式删除”与“普通赋值”。
 
 export type VueElementConstructor<P = {}> = {
   new (initialProps?: Record<string, any>): VueElement & P
@@ -201,6 +203,8 @@ export const defineSSRCustomElement = ((
   options: any,
   extraOptions?: ComponentOptions,
 ) => {
+  // SSR 版本唯一的差别是底层应用工厂换成 `createSSRApp`，
+  // 后续 mount 时就会走 hydration 语义而不是纯客户端重建。
   // @ts-expect-error
   return defineCustomElement(options, extraOptions, createSSRApp)
 }) as typeof defineCustomElement
@@ -303,6 +307,14 @@ export class VueElement
     }
   }
 
+  /**
+   * 浏览器 Custom Element 生命周期：节点接入文档树时触发。
+   *
+   * 这里主要做三件事：
+   * - 建立父子自定义元素关系
+   * - 处理非 shadow 模式下的 slots 预解析
+   * - 按需启动组件定义解析和首次挂载
+   */
   connectedCallback(): void {
     // 只有真正连入文档树后才开始解析和挂载组件。
     if (!this.isConnected) return
@@ -391,6 +403,12 @@ export class VueElement
     })
   }
 
+  /**
+   * 处理浏览器 attribute 变更回调。
+   *
+   * MutationObserver 拿到的仍是 DOM 层变化，这里统一把它们折返到 `_setAttr`
+   * 再进入 Vue props 更新链，避免出现多条不一致的数据入口。
+   */
   private _processMutations(mutations: MutationRecord[]) {
     // 只关心 attribute 变化，统一转回 props 更新链。
     for (const m of mutations) {
@@ -420,6 +438,16 @@ export class VueElement
     this._ob.observe(this, { attributes: true })
 
     const resolve = (def: InnerComponentDef, isAsync = false) => {
+      /**
+       * `resolve()` 承接“最终组件定义到手之后”的统一收尾逻辑。
+       *
+       * 无论同步组件还是异步组件，后续步骤都一样：
+       * 1. 标记定义已解析
+       * 2. 识别 Number props 并修正已经收集到的 attribute 值
+       * 3. 建立 prop 桥接访问器
+       * 4. 注入样式
+       * 5. 真正挂载组件
+       */
       this._resolved = true
       this._pendingResolve = undefined
 
@@ -432,6 +460,7 @@ export class VueElement
           const opt = props[key]
           if (opt === Number || (opt && opt.type === Number)) {
             if (key in this._props) {
+              // attribute 永远先以字符串形态进来，这里补做一次类型恢复。
               this._props[key] = toNumber(this._props[key])
             }
             ;(numberProps || (numberProps = Object.create(null)))[
@@ -462,6 +491,8 @@ export class VueElement
     if (asyncDef) {
       // 异步定义解析完成前，当前元素保持“已连接但未挂载”的等待态。
       this._pendingResolve = asyncDef().then((def: InnerComponentDef) => {
+        // 外层 defineCustomElement 传入的 configureApp 不能丢，
+        // 所以异步真实定义解析后要补回去。
         def.configureApp = this._def.configureApp
         resolve((this._def = def), true)
       })
@@ -486,6 +517,8 @@ export class VueElement
       def.configureApp(this._app)
     }
     this._app._ceVNode = this._createVNode()
+    // `_ceVNode` 是 custom element 专用根 vnode 缓存。
+    // 后续 prop 更新时会重新生成 vnode 并继续 render 到同一个 root。
     // 真正渲染仍走标准 app.mount，只是容器变成了 shadowRoot 或宿主元素自身。
     this._app.mount(this._root)
 
@@ -511,6 +544,7 @@ export class VueElement
   private _resolveProps(def: InnerComponentDef) {
     const { props } = def
     const declaredPropKeys = isArray(props) ? props : Object.keys(props || {})
+    // 这里只桥接“组件真实声明过的 props”，避免把自定义元素实例上的任意字段都误接进 Vue props。
 
     // 处理“浏览器先创建元素实例，后升级定义”时，用户提前直接写到实例上的属性。
     for (const key of Object.keys(this)) {
@@ -527,6 +561,8 @@ export class VueElement
           return this._getProp(key)
         },
         set(this: VueElement, val) {
+          // setter 第四个参数传 `!this._patching`，
+          // 是为了避免当前 patch 正在把 props 回写到元素时又立即触发一次递归更新。
           // 外部直接 `el.foo = ...` 最终仍统一收口到 Vue props 更新链，而不是绕过组件实例。
           this._setProp(key, val, true, !this._patching)
         },
@@ -548,14 +584,20 @@ export class VueElement
   }
 
   /**
-   * @internal
+   * 读取当前缓存的 prop 值。
    */
   protected _getProp(key: string): any {
     return this._props[key]
   }
 
   /**
-   * @internal
+   * 更新单个 prop，并在需要时同步反射到 attribute / 触发组件刷新。
+   *
+   * 这是 Custom Element 宿主侧最核心的收口点之一：
+   * - 外部 `el.foo = ...`
+   * - 浏览器 attribute 变化
+   * - 内部 prop 桥接 setter
+   * 最终都会汇聚到这里。
    */
   _setProp(
     key: string,
@@ -581,6 +623,8 @@ export class VueElement
       }
       // 按需把 prop 变化反射回 attribute，保持浏览器 Custom Element 语义一致。
       if (shouldReflect) {
+        // 反射 attribute 前先暂停 MutationObserver，
+        // 否则我们自己写回的 attribute 又会被当成“外部变更”重新走一遍 `_setAttr`。
         const ob = this._ob
         if (ob) {
           this._processMutations(ob.takeRecords())
@@ -591,6 +635,7 @@ export class VueElement
         } else if (typeof val === 'string' || typeof val === 'number') {
           this.setAttribute(hyphenate(key), val + '')
         } else if (!val) {
+          // 非字符串/数字且为假值时，按 Custom Element 常见语义移除 attribute。
           this.removeAttribute(hyphenate(key))
         }
         ob && ob.observe(this, { attributes: true })
@@ -620,6 +665,8 @@ export class VueElement
     const vnode = createVNode(this._def, extend(baseProps, this._props))
     if (!this._instance) {
       vnode.ce = instance => {
+        // `ce` 回调是 runtime-core 在创建组件实例后给 custom element 的回传通道。
+        // 到这里才能真正拿到组件实例，并把 custom element 相关桥接挂上去。
         this._instance = instance
         instance.ce = this
         instance.isCE = true // for vue-i18n backwards compat
@@ -639,6 +686,8 @@ export class VueElement
         }
 
         const dispatch = (event: string, args: any[]) => {
+          // `emit('foo', a, b)` 最终会变成 `CustomEvent('foo', { detail: [a, b] })`。
+          // 如果第一个参数本身是对象，还会被浅合并到事件配置上，兼容部分高级用法。
           this.dispatchEvent(
             new CustomEvent(
               event,
@@ -686,6 +735,8 @@ export class VueElement
       : this._getRootStyleInsertionAnchor(root)
     let last: HTMLStyleElement | null = null
     for (let i = styles.length - 1; i >= 0; i--) {
+      // 逆序插入 + `insertBefore(last || anchor)` 的组合，
+      // 是为了在最终 DOM 中保持 styles 数组原本的前后顺序。
       const s = document.createElement('style')
       if (nonce) s.setAttribute('nonce', nonce)
       s.textContent = styles[i]
@@ -693,6 +744,7 @@ export class VueElement
       root.insertBefore(s, last || insertionAnchor)
       last = s
       if (i === 0) {
+        // 记录“这组样式的首个锚点”，以后子组件/热更新再插入相关样式时能稳定找到位置。
         if (!parentComp) this._styleAnchors.set(this._def, s)
         if (owner) this._styleAnchors.set(owner, s)
       }
@@ -742,7 +794,11 @@ export class VueElement
   }
 
   /**
-   * Only called when shadowRoot is false
+   * 仅在 `shadowRoot: false` 时调用。
+   *
+   * 作用：
+   * - 在 Vue 挂载前先把原始 light DOM 内容按 slot 名缓存起来
+   * - 避免这些节点和后续 Vue 渲染结果直接混在一起
    */
   private _parseSlots() {
     // 非 shadow 模式下，需要手动把 light DOM 内容按 slot 名分组缓存起来。
@@ -751,13 +807,18 @@ export class VueElement
     while ((n = this.firstChild)) {
       const slotName =
         (n.nodeType === 1 && (n as Element).getAttribute('slot')) || 'default'
+      // 先缓存再移出宿主元素，避免后续组件挂载时这些原始 light DOM 节点和 Vue 渲染结果混在一起。
       ;(slots[slotName] || (slots[slotName] = [])).push(n)
       this.removeChild(n)
     }
   }
 
   /**
-   * Only called when shadowRoot is false
+   * 仅在 `shadowRoot: false` 时调用。
+   *
+   * 作用：
+   * - 把预先缓存的 light DOM 内容重新分发到运行时渲染出的 `<slot>` 出口
+   * - 在非 shadow 模式下手动模拟浏览器原生 slot 分发结果
    */
   private _renderSlots() {
     // 把缓存的 light DOM 内容重新分发到组件渲染出来的 `<slot>` 出口中。
@@ -784,6 +845,7 @@ export class VueElement
           parent.insertBefore(n, o)
         }
       } else {
+        // 用户没有提供该 slot 内容时，保留组件模板里 `<slot>` 标签自带的 fallback children。
         while (o.firstChild) parent.insertBefore(o.firstChild, o)
       }
       parent.removeChild(o)
@@ -791,9 +853,11 @@ export class VueElement
   }
 
   /**
-   * @internal
+   * 找出当前 custom element 作用域内的所有 `<slot>` 出口。
    */
   private _getSlots(): HTMLSlotElement[] {
+    // 返回去重后的全部 `<slot>` 出口；
+    // 之所以用 Set，是因为 Teleport 目标和宿主树扫描结果可能出现重叠。
     const roots: Element[] = [this]
     if (this._teleportTargets) {
       // Teleport 传送出去的节点里也可能出现 slot 出口，要一并扫描。
@@ -812,38 +876,41 @@ export class VueElement
   }
 
   /**
-   * @internal
+   * 给子组件注入样式到当前 custom element 的 shadowRoot。
    */
   _injectChildStyle(
     comp: ConcreteComponent & CustomElementOptions,
     parentComp?: ConcreteComponent,
   ): void {
     // 子组件在 custom element 内部也要把自己的样式注入到同一个 shadowRoot。
+    // 这样即使组件嵌套层级很深，最终样式仍能在当前 custom element 封装边界内生效。
     this._applyStyles(comp.styles, comp, parentComp)
   }
 
   /**
-   * @internal
+   * 通知 custom element：当前即将进入一次 renderer patch。
    */
   _beginPatch(): void {
     // patch 期间先标记，避免 prop 反射和外部 setter 形成递归更新。
+    // 同时把 `_dirty` 清零，便于本轮 patch 重新收集过程中新增的 prop 变化。
     this._patching = true
     this._dirty = false
   }
 
   /**
-   * @internal
+   * 通知 custom element：当前一次 renderer patch 已结束。
    */
   _endPatch(): void {
     this._patching = false
     if (this._dirty && this._instance) {
       // patch 过程中如果又积累了新的 prop 变化，结束后补一次统一更新。
+      // 这样既避免递归，也不会丢掉 patch 期间新写入的值。
       this._update()
     }
   }
 
   /**
-   * @internal
+   * 判断当前 custom element 是否启用了 shadowRoot。
    */
   _hasShadowRoot(): boolean {
     // `shadowRoot: false` 时，组件内容直接渲染在宿主元素 light DOM 中。
@@ -851,10 +918,12 @@ export class VueElement
   }
 
   /**
-   * @internal
+   * 开发环境下移除某个子组件对应的样式节点。
    */
   _removeChildStyle(comp: ConcreteComponent): void {
     if (__DEV__) {
+      // 这里只在开发环境做，是因为样式移除主要服务于 HMR；
+      // 生产环境不会走这套“按组件重载 style 节点”的流程。
       this._styleChildren.delete(comp)
       this._styleAnchors.delete(comp)
       if (this._childStyles && comp.__hmrId) {
@@ -876,6 +945,7 @@ export function useHost(caller?: string): VueElement | null {
   const instance = getCurrentInstance()
   const el = instance && (instance.ce as VueElement)
   if (el) {
+    // 只有通过 `defineCustomElement` 创建出来的组件实例才会把 `ce` 指回宿主元素。
     return el
   } else if (__DEV__) {
     if (!instance) {

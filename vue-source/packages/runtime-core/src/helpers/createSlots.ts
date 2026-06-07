@@ -35,6 +35,18 @@ export function createSlots(
     | undefined
   )[],
 ): Record<string, SSRSlot> {
+  /**
+   * 把编译器产出的动态插槽描述整理成最终可调用的 slots 对象。
+   *
+   * 主要功能：
+   * - 处理 `v-for` 生成的动态插槽数组
+   * - 处理 `v-if` 生成的单个条件插槽
+   * - 在条件分支插槽上补 branch key，避免 patch 时不同分支被错误复用
+   *
+   * 参数：
+   * - `slots`：已有的静态 slots 容器
+   * - `dynamicSlots`：编译器额外生成的动态插槽描述列表
+   */
   for (let i = 0; i < dynamicSlots.length; i++) {
     const slot = dynamicSlots[i]
     // `v-for` 生成的是一组同构动态插槽描述，需要逐个平铺进结果对象。

@@ -6,13 +6,20 @@
 
 ```text
 front_basic/
-├─ backend/   # OpenAI 流式接口
-├─ frontend/  # React 前端
-├─ docs/      # VitePress 文档站点
-├─ promise/   # 手写 Promise 实现
-├─ vue-source/# 手写 Vue 源码/实验目录
-├─ package.json
-└─ pnpm-workspace.yaml
+├─ backend/             # OpenAI 流式接口与服务端实验
+├─ frontend/            # React 前端示例
+├─ docs/                # VitePress 文档站点
+├─ promise/             # 手写 Promise 实现与测试
+├─ vue-source/          # 手写 Vue 响应式源码 / 实验目录
+├─ vue-demo/            # Vue Demo 工程
+├─ pinia-demo/          # Pinia 相关实验
+├─ rag/                 # RAG 相关记录与实验
+├─ react-source/        # React 源码/实验占位目录
+├─ vite-source/         # Vite 源码/实验占位目录
+├─ package.json         # 根工作区脚本
+├─ pnpm-workspace.yaml  # workspace 配置
+├─ pnpm-lock.yaml       # 根锁文件
+└─ vitest.config.ts     # 根测试配置
 ```
 
 ## 安装依赖
@@ -132,12 +139,14 @@ pnpm --filter @front/vue-source build
 - `@front/promise`
 - `@front/vue-source`
 
+## 当前内容重点
 
-# 源码实现步骤
-- reactivity 响应式核心，理解vue3基本原理
-- shared 共享工具包
-- 
-
+- `vue-source/packages/reactivity`
+  手写 Vue 3 reactivity 核心实现与源码注释
+- `docs/vue/source`
+  对 `effect`、`computed`、`watch`、`reactive`、`collectionHandlers`、`arrayInstrumentations`、`effectScope` 等源码分析文档
+- `promise`
+  Promise 实现与测试
 
 
 
