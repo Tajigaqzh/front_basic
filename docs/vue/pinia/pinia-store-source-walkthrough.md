@@ -117,6 +117,31 @@ flowchart TD
     B --> E["state and getter key lists"]
 ```
 
+### 4.1 createBaseStore 内部结构图
+
+```mermaid
+flowchart TD
+    A["createBaseStore"] --> B["ensure pinia.state.value[id] exists"]
+    B --> C["create subscription sets"]
+    C --> D["watch pinia.state.value[id]"]
+    D --> E["create reactive store shell"]
+    E --> F["define $patch"]
+    E --> G["define $reset"]
+    E --> H["define $dispose"]
+    E --> I["define $subscribe"]
+    E --> J["define $onAction"]
+    E --> K["define $state accessor"]
+    K --> L["cache base store in pinia._s"]
+```
+
+这张图可以直接对照源码注释读：
+
+- watch 负责 direct mutation。
+- `$patch` 负责 patch mutation。
+- `$subscribe` 写入订阅集合。
+- `$onAction` 写入 action 订阅集合。
+- `$state` 把 store 和根状态树连接起来。
+
 后面 options / setup 两条分支，只是在这个底座上继续挂各自的 state、getter、action。
 
 ---
@@ -315,6 +340,33 @@ setup store 的输入不是三段 options，而是一个返回对象。
 4. 其他普通值
    直接原样挂到 store 上
 
+流程图如下：
+
+```mermaid
+flowchart TD
+    A["run user setup"] --> B["iterate setup return entries"]
+    B --> C{"value is function"}
+    C -- "yes" --> D["wrap as action"]
+    C -- "no" --> E{"value is ref"}
+    E -- "yes" --> F{"computed like"}
+    F -- "yes" --> G["record getter key"]
+    F -- "no" --> H["record state key and sync to root state"]
+    E -- "no" --> I{"reactive or plain object"}
+    I -- "yes" --> J["record state key and hydrate or assign"]
+    I -- "no" --> K["assign raw value to store"]
+    D --> L["continue"]
+    G --> L
+    H --> L
+    J --> L
+    K --> L
+```
+
+其中最容易漏的是 `ref` 分支：
+
+- 普通 `ref` 是 state，需要同步到 `pinia.state.value[id]`。
+- `computed` 也是 ref-like，但它是 getter，需要放入 `_gettersKeys`。
+- readonly/computed 不应该作为可写 state 写入根状态树。
+
 ### 9.1 为什么 `ref` 还要继续区分 computed
 
 因为 computed 也是 ref-like。
@@ -411,6 +463,33 @@ flowchart TD
     J --> K["save store in pinia cache"]
     K --> L["return store"]
 ```
+
+### 12.1 option store 和 setup store 对照图
+
+```mermaid
+flowchart LR
+    A["options store"] --> B["state factory"]
+    A --> C["getters object"]
+    A --> D["actions object"]
+    B --> E["proxy state to root state"]
+    C --> F["wrap getter with computed"]
+    D --> G["wrap action with action hooks"]
+
+    H["setup store"] --> I["setup return object"]
+    I --> J["function as action"]
+    I --> K["ref as state or getter"]
+    I --> L["reactive object as state"]
+    J --> G
+    K --> M["define store property proxy"]
+    L --> M
+```
+
+两条分支最终都会得到同样的结果：
+
+- store 上可以直接读写状态。
+- action 都支持 `$onAction()`。
+- getter 都能被 `storeToRefs()` 提取。
+- 插件都能拿到完整 store。
 
 这里有两个特别重要的结论：
 

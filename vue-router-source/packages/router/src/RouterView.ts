@@ -155,10 +155,12 @@ export const RouterViewImpl = /*#__PURE__*/ defineComponent({
       // navigated to a different location so the value is different
       const currentName = props.name
       const matchedRoute = matchedRouteRef.value
+      // name 对应命名视图；默认视图读取 components.default。
       const ViewComponent =
         matchedRoute && matchedRoute.components![currentName]
 
       if (!ViewComponent) {
+        // 当前层没有可渲染组件时，仍然把 slot props 交给用户自定义渲染。
         return normalizeSlot(slots.default, { Component: ViewComponent, route })
       }
 
@@ -214,6 +216,7 @@ export const RouterViewImpl = /*#__PURE__*/ defineComponent({
       return (
         // pass the vnode to the slot as a prop.
         // h and <component :is="..."> both accept vnodes
+        // 有默认插槽时交给插槽消费 Component/route，否则直接渲染匹配组件。
         normalizeSlot(slots.default, { Component: component, route }) ||
         component
       )

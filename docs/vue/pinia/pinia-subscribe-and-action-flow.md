@@ -87,6 +87,24 @@ flowchart TD
 
 当前实现就是用这个开关来避免重复。
 
+### 3.1 direct mutation 和 patch mutation 的分流图
+
+```mermaid
+flowchart TD
+    A["state changes"] --> B{"entered through $patch"}
+    B -- "yes" --> C["set isListening false"]
+    C --> D["mutate root state"]
+    D --> E["emit patch mutation manually"]
+    E --> F["set isListening true"]
+    B -- "no" --> G["deep watcher sees change"]
+    G --> H["emit direct mutation"]
+```
+
+这就是源码里 `isListening` 的意义：
+
+- patch 入口自己知道 mutation 类型，所以自己派发。
+- direct 修改没有显式入口，只能由 watcher 捕获。
+
 ---
 
 ## 4. `mergeState()` 为什么要递归
@@ -218,6 +236,23 @@ patch 已经是 Pinia 接管的更新入口，不需要再多走一层 watcher�
 - 重复删除是安全的
 - 删除后不会影响其他订阅
 
+流程图：
+
+```mermaid
+flowchart TD
+    A["call $subscribe or $onAction"] --> B["choose subscription set"]
+    B --> C["addSubscription"]
+    C --> D["subscriptions.add callback"]
+    D --> E["return unsubscribe"]
+    E --> F["call unsubscribe"]
+    F --> G["subscriptions.delete callback"]
+    G --> H{"deleted"}
+    H -- "yes" --> I["run cleanup"]
+    H -- "no" --> J["do nothing"]
+```
+
+`subscriptions.ts` 不知道自己服务的是 state 还是 action，它只维护 Set。
+
 ---
 
 ## 9. 为什么组件内订阅会自动清理
@@ -307,6 +342,21 @@ flowchart TD
     G -- no --> I{"returns promise"}
     I -- no --> J["run after callbacks"]
     I -- yes --> K["run after callbacks after resolve"]
+```
+
+更细一点看同步/异步分支：
+
+```mermaid
+flowchart TD
+    A["wrappedAction"] --> B["notify before subscribers"]
+    B --> C["execute original action"]
+    C --> D{"sync throw"}
+    D -- "yes" --> E["trigger onError callbacks"]
+    D -- "no" --> F{"returns Promise"}
+    F -- "no" --> G["trigger after callbacks immediately"]
+    F -- "yes" --> H{"promise result"}
+    H -- "resolve" --> I["trigger after callbacks with resolved value"]
+    H -- "reject" --> J["trigger onError callbacks with error"]
 ```
 
 所以 `$onAction()` 看到的上下文：

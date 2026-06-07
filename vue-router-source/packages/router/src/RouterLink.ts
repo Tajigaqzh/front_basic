@@ -410,6 +410,7 @@ export interface _RouterLinkI {
 }
 
 function guardEvent(e: MouseEvent) {
+  // 这些过滤条件保留浏览器原生链接行为：新标签页、右键、组合键、用户 preventDefault。
   // don't redirect with control keys
   if (e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return
   // don't redirect when preventDefault called
@@ -433,6 +434,7 @@ function includesParams(
   outer: RouteLocation['params'],
   inner: RouteLocation['params']
 ): boolean {
+  // active 只要求目标 params 被当前 params 包含；exact-active 才要求完全相等。
   for (const key in inner) {
     const innerValue = inner[key]
     const outerValue = outer[key]

@@ -224,11 +224,14 @@ export function createRouter(options: RouterOptions): Router {
     rawLocation: RouteLocationRaw,
     currentLocation?: RouteLocationNormalizedLoaded
   ): RouteLocationResolved {
+    // resolve 是所有导航入口的标准化关口：
+    // 字符串、path 对象、name + params 对象最终都会变成完整的 RouteLocationResolved。
     // const resolve: Router['resolve'] = (rawLocation: RouteLocationRaw, currentLocation) => {
     // const objectLocation = routerLocationAsObject(rawLocation)
     // we create a copy to modify it later
     currentLocation = assign({}, currentLocation || currentRoute.value)
     if (typeof rawLocation === 'string') {
+      // 字符串输入先被拆成 path/query/hash，再交给 matcher 只按 path 找 record。
       const locationNormalized = parseURL(
         parseQuery,
         rawLocation,
@@ -271,6 +274,7 @@ export function createRouter(options: RouterOptions): Router {
 
     // path could be relative in object as well
     if (rawLocation.path != null) {
+      // 显式 path 优先，params 不参与拼 path；这也是 path + params 会被警告的原因。
       if (
         __DEV__ &&
         'params' in rawLocation &&
@@ -299,6 +303,7 @@ export function createRouter(options: RouterOptions): Router {
       })
       // current location params are decoded, we need to encode them in case the
       // matcher merges the params
+      // name/relative 导航可能继承当前 params，因此当前 params 也要先编码给 matcher。
       currentLocation.params = encodeParams(currentLocation.params)
     }
 
@@ -479,6 +484,7 @@ export function createRouter(options: RouterOptions): Router {
     let failure: NavigationFailure | void | undefined
 
     if (!force && isSameRouteLocation(stringifyQuery, from, targetLocation)) {
+      // 相同地址的 push 不会重新执行完整导航，只产生 duplicated failure。
       failure = createRouterError<NavigationFailure>(
         ErrorTypes.NAVIGATION_DUPLICATED,
         {
@@ -642,6 +648,7 @@ export function createRouter(options: RouterOptions): Router {
       runGuardQueue(guards)
         .then(() => {
           // check global guards beforeEach
+          // 全局 beforeEach 在组件 leave 之后执行，允许应用层统一拦截。
           guards = []
           for (const guard of beforeGuards.list()) {
             guards.push(guardToPromiseFn(guard, to, from))
@@ -652,6 +659,7 @@ export function createRouter(options: RouterOptions): Router {
         })
         .then(() => {
           // check in components beforeRouteUpdate
+          // 复用的 matched record 会走 update 守卫，而不是 enter/leave。
           guards = extractComponentsGuards(
             updatingRecords,
             'beforeRouteUpdate',
@@ -671,6 +679,7 @@ export function createRouter(options: RouterOptions): Router {
         })
         .then(() => {
           // check the route beforeEnter
+          // beforeEnter 只针对新进入的 route record，复用视图不会重复触发。
           guards = []
           for (const record of enteringRecords) {
             // do not trigger beforeEnter on reused views
@@ -710,6 +719,7 @@ export function createRouter(options: RouterOptions): Router {
         })
         .then(() => {
           // check global guards beforeResolve
+          // beforeResolve 是确认导航前的最后一道全局异步关口。
           guards = []
           for (const guard of beforeResolveGuards.list()) {
             guards.push(guardToPromiseFn(guard, to, from))
@@ -997,6 +1007,7 @@ export function createRouter(options: RouterOptions): Router {
     if (!isBrowser || !scrollBehavior) return Promise.resolve()
 
     const scrollPosition: _ScrollPositionNormalized | null =
+      // 优先使用浏览器前进/后退保存的位置；其次是首屏或 popstate 自带的 history.state.scroll。
       (!isPush && getSavedScrollPosition(getScrollKey(to.fullPath, 0))) ||
       ((isFirstNavigation || !isPush) &&
         (history.state as HistoryState) &&
@@ -1070,6 +1081,7 @@ export function createRouter(options: RouterOptions): Router {
         !started &&
         currentRoute.value === START_LOCATION_NORMALIZED
       ) {
+        // install 阶段触发客户端首轮导航，把当前地址栏位置同步进 router 状态。
         // see above
         started = true
         push(routerHistory.location).catch(err => {
@@ -1079,6 +1091,7 @@ export function createRouter(options: RouterOptions): Router {
 
       const reactiveRoute = {} as RouteLocationNormalizedLoaded
       for (const key in START_LOCATION_NORMALIZED) {
+        // $route/useRoute 暴露的是浅响应代理，属性 getter 始终转发到 currentRoute.value。
         Object.defineProperty(reactiveRoute, key, {
           get: () => currentRoute.value[key as keyof RouteLocationNormalized],
           enumerable: true,
@@ -1119,6 +1132,7 @@ export function createRouter(options: RouterOptions): Router {
 
   // TODO: type this as NavigationGuardReturn or similar instead of any
   function runGuardQueue(guards: Lazy<any>[]): Promise<any> {
+    // 守卫队列严格串行执行：前一个 resolve 后才会进入下一个。
     return guards.reduce(
       (promise, guard) => promise.then(() => runWithContext(guard)),
       Promise.resolve()

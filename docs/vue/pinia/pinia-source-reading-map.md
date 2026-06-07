@@ -33,6 +33,37 @@ flowchart TD
 
 `createPinia -> install/useStore -> createOptionsStore/createSetupStore -> pinia.state.value -> 订阅/插件/辅助 API`
 
+### 1.1 按源码文件串起来的执行图
+
+```mermaid
+flowchart TD
+    A["src/index.ts export public api"] --> B["createPinia.ts create root pinia"]
+    B --> C["rootStore.ts set active pinia and provide symbol"]
+    C --> D["store.ts defineStore returns useStore"]
+    D --> E["store.ts resolve pinia"]
+    E --> F{"store already cached in pinia._s"}
+    F -- "yes" --> G["return cached store"]
+    F -- "no" --> H{"setup store or options store"}
+    H -- "options" --> I["createOptionsStore"]
+    H -- "setup" --> J["createSetupStore"]
+    I --> K["createBaseStore"]
+    J --> K
+    K --> L["pinia.state.value stores raw state"]
+    I --> M["mount state getters actions"]
+    J --> N["classify setup return values"]
+    M --> O["applyPlugins"]
+    N --> O
+    O --> P["cache final store in pinia._s"]
+```
+
+这张图对应现在源码里的注释粒度：
+
+- `createPinia.ts` 看根容器怎么搭。
+- `rootStore.ts` 看当前 pinia 怎么被找到。
+- `store.ts` 看 store 怎么被创建、缓存、代理、订阅和扩展。
+- `mapHelpers.ts` / `storeToRefs.ts` 看外围 API 怎么依赖 `_stateKeys`、`_gettersKeys`。
+- `types.ts` 看运行时对象如何被类型系统拼成最终 `Store`。
+
 ---
 
 ## 2. 最推荐的阅读顺序

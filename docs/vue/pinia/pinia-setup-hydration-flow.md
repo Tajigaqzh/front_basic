@@ -80,6 +80,39 @@ setup store 的 hydration 本质上就是：
 
 在“分析 setup 返回值分类”的同时，顺带决定“是否从 `initialState` 回填值”。
 
+### 2.1 源码分支细化图
+
+```mermaid
+flowchart TD
+    A["setup returned key and value"] --> B{"function"}
+    B -- "yes" --> C["wrapAction and skip hydration"]
+    B -- "no" --> D{"isRef"}
+    D -- "yes" --> E{"has initialState key and shouldHydrate"}
+    E -- "yes" --> F{"readonly computed"}
+    F -- "yes" --> G["do not assign value"]
+    F -- "no" --> H["assign initialState into value.value"]
+    E -- "no" --> I["keep setup initial ref value"]
+    H --> J{"computed like"}
+    I --> J
+    G --> J
+    J -- "yes" --> K["record getter key"]
+    J -- "no" --> L["record state key and define root state proxy"]
+    D -- "no" --> M{"reactive or plain object"}
+    M -- "yes" --> N{"has initialState key and shouldHydrate"}
+    N -- "yes" --> O{"both plain objects"}
+    O -- "yes" --> P["mergeState into existing object"]
+    O -- "no" --> Q["assign hydrated value to root state"]
+    N -- "no" --> R["assign setup value to root state"]
+    M -- "no" --> S["assign raw value to store"]
+```
+
+这张图对应 `createSetupStore()` 里的核心判断：
+
+- 函数不参与 hydration，直接变 action。
+- `ref` 先判断是否能回填，再判断是 state 还是 getter。
+- `reactive` / plain object 会优先保留原对象引用，能深合并就深合并。
+- 其他普通值不进入根 state，只挂到 store 实例上。
+
 ---
 
 ## 3. `initialState` 从哪里来

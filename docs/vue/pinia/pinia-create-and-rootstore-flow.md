@@ -155,6 +155,31 @@ flowchart LR
 
 在组合式 API 里，一般不直接依赖它；但在某些老代码或组件实例方法里，`this.$pinia` 是个常见入口。
 
+### 3.5 install 到 useStore 的衔接流程
+
+```mermaid
+flowchart TD
+    A["app.use(pinia)"] --> B["pinia.install(app)"]
+    B --> C["setActivePinia(pinia)"]
+    B --> D["pinia._a = app"]
+    B --> E["app.provide(piniaSymbol, pinia)"]
+    B --> F["app.config.globalProperties.$pinia = pinia"]
+    C --> G["component or module calls useStore"]
+    E --> G
+    F --> H["Options API helpers read this.$pinia"]
+    G --> I["resolvePinia"]
+    I --> J{"has explicit pinia"}
+    J -- "yes" --> K["use passed pinia"]
+    J -- "no" --> L{"has injection context"}
+    L -- "yes" --> M["inject piniaSymbol"]
+    L -- "no" --> N["fallback activePinia"]
+```
+
+这张图要重点看两个入口：
+
+- 组合式 API 入口：`provide/inject -> resolvePinia`。
+- Options API 入口：`globalProperties.$pinia -> mapHelpers -> useStore(this.$pinia)`。
+
 ---
 
 ## 4. `rootStore.ts` 负责什么
@@ -283,6 +308,25 @@ flowchart TD
     E --> F["useStore resolves pinia"]
     F --> G["create or reuse store"]
 ```
+
+### 9.1 根实例字段和后续源码的对应关系
+
+```mermaid
+flowchart LR
+    A["pinia.state"] --> B["store.$state"]
+    A --> C["store state property proxy"]
+    D["pinia._s"] --> E["useStore cache lookup"]
+    F["pinia._p"] --> G["applyPlugins"]
+    H["pinia._a"] --> I["PiniaPluginContext.app"]
+    J["pinia._e"] --> K["disposePinia stop scope"]
+```
+
+阅读时可以带着这张表看源码：
+
+- 看到 `pinia.state.value[id]`，就回到“根状态树”。
+- 看到 `pinia._s`，就回到“store 缓存”。
+- 看到 `pinia._p`，就回到“插件队列”。
+- 看到 `pinia._a`，就回到“当前 Vue app”。
 
 ---
 

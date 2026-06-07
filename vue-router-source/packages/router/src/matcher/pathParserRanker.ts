@@ -277,6 +277,7 @@ export function tokensToParser(
             : (param as string)
           if (!text) {
             if (optional) {
+              // 可选参数为空时需要同时处理斜杠，避免生成 // 或尾部多余 /。
               // if we have more than one optional param like /:a?-static we don't need to care about the optional param
               if (segment.length < 2) {
                 // remove the last slash as we could be at the end

@@ -21,12 +21,35 @@
 ```mermaid
 flowchart TD
     A["types.ts"] --> B["store type rules"]
-    B --> C[mapHelpers.ts]
-    B --> D[storeToRefs.ts]
+    B --> C["mapHelpers.ts"]
+    B --> D["storeToRefs.ts"]
     E["subscriptions.ts"] --> F["store subscription apis"]
     C["mapHelpers.ts"] --> G["options api usage"]
     D["storeToRefs.ts"] --> H["setup destructuring usage"]
 ```
+
+### 1.1 辅助 API 依赖内部字段的关系图
+
+```mermaid
+flowchart TD
+    A["store.ts creates store"] --> B["_stateKeys"]
+    A --> C["_gettersKeys"]
+    A --> D["_actionSubscriptions"]
+    B --> E["storeToRefs state toRef"]
+    C --> F["storeToRefs getter computed"]
+    D --> G["wrapAction trigger action hooks"]
+    H["mapHelpers.ts"] --> I["useStore this.$pinia"]
+    I --> J["read or write store fields"]
+    K["types.ts"] --> H
+    K --> E
+    K --> F
+```
+
+这张图说明辅助 API 不是独立系统：
+
+- `storeToRefs()` 依赖 `store.ts` 记录的 key。
+- `mapHelpers()` 依赖 `this.$pinia` 和 store 字段代理。
+- `subscriptions.ts` 被 `$subscribe()` 和 `$onAction()` 共同使用。
 
 ---
 
@@ -80,6 +103,18 @@ flowchart LR
 
 把“从 store 上读字段”包装成“组件 computed 可直接展开的 getter 函数对象”。
 
+```mermaid
+flowchart TD
+    A["mapState useStore mapper"] --> B{"array or object"}
+    B -- "array" --> C["key maps to same store key"]
+    B -- "object" --> D{"mapper value type"}
+    D -- "string" --> E["read store target key"]
+    D -- "function" --> F["call mapper with store"]
+    C --> G["return computed getter functions"]
+    E --> G
+    F --> G
+```
+
 ### 2.3 `mapWritableState()`
 
 它和 `mapState()` 最大差别在于：
@@ -104,6 +139,14 @@ flowchart LR
 
 - 普通 state
 - setup store 里的 writable computed
+
+```mermaid
+flowchart TD
+    A["mapWritableState"] --> B["create computed descriptor"]
+    B --> C["get reads store target"]
+    B --> D["set writes store target"]
+    D --> E["root state or writable computed updates"]
+```
 
 ### 2.4 `mapActions()`
 

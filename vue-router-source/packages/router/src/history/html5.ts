@@ -84,12 +84,14 @@ function useHistoryListeners(
       historyState.value = state
 
       // ignore the popstate and reset the pauseState
+      // routerHistory.go(delta, false) 会设置 pauseState，用来避免“回滚 URL”再次触发导航。
       if (pauseState && pauseState === from) {
         pauseState = null
         return
       }
       delta = fromState ? state.position - fromState.position : 0
     } else {
+      // 没有 state 通常说明用户或第三方代码直接改了 history，先补一份 router 需要的 state。
       replace(to)
     }
 
@@ -117,6 +119,7 @@ function useHistoryListeners(
 
   function listen(callback: NavigationCallback) {
     // set up the listener and prepare teardown callbacks
+    // Router 层通过 listen 接入 popstate；history 层只负责派发标准化事件。
     listeners.push(callback)
 
     const teardown = () => {
@@ -335,6 +338,7 @@ export function createWebHistory(base?: string): RouterHistory {
     historyNavigation.replace
   )
   function go(delta: number, triggerListeners = true) {
+    // triggerListeners=false 常用于导航失败回滚 URL，但不想再次进入 router 导航流程。
     if (!triggerListeners) historyListeners.pauseListeners()
     history.go(delta)
   }

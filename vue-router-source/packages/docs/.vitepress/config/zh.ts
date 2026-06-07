@@ -179,6 +179,10 @@ export const zhConfig: LocaleSpecificConfig<DefaultTheme.Config> = {
               text: '动态路由',
               link: '/zh/guide/advanced/dynamic-routing.html',
             },
+            {
+              text: '源码关键流程图',
+              link: '/zh/guide/source-flow.html',
+            },
           ],
         },
         {

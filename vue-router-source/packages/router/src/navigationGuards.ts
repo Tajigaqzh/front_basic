@@ -337,9 +337,11 @@ export function extractComponentsGuards(
 
       // TODO: extract the logic relying on instances into an options-api plugin
       // skip update and leave guards if the route component is not mounted
+      // leave/update 守卫依赖已有组件实例；beforeRouteEnter 则发生在实例创建前。
       if (guardType !== 'beforeRouteEnter' && !record.instances[name]) continue
 
       if (isRouteComponent(rawComponent)) {
+        // 同步组件可以直接从组件选项上读取 beforeRouteXxx。
         // __vccOpts is added by vue-class-component and contain the regular options
         const options: ComponentOptions =
           (rawComponent as any).__vccOpts || rawComponent
@@ -350,6 +352,7 @@ export function extractComponentsGuards(
           )
       } else {
         // start requesting the chunk already
+        // 异步组件在提取守卫时就会开始加载，加载完成后缓存 resolved component。
         let componentPromise: Promise<
           RouteComponent | null | undefined | void
         > = (rawComponent as Lazy<RouteComponent>)()
@@ -401,6 +404,7 @@ export function extractComponentsGuards(
 export function loadRouteLocation(
   route: RouteLocation | RouteLocationNormalized
 ): Promise<RouteLocationNormalizedLoaded> {
+  // loadRouteLocation 用于提前解析异步组件，常见于 SSR 或外部想保证 route 可渲染的场景。
   return route.matched.every(record => record.redirect)
     ? Promise.reject(new Error('Cannot load a route that redirects.'))
     : Promise.all(
@@ -470,6 +474,7 @@ export function extractChangingRecords(
   for (let i = 0; i < len; i++) {
     const recordFrom = from.matched[i]
     if (recordFrom) {
+      // 同一个 record 仍在目标链里就是 updating，否则就是 leaving。
       if (to.matched.find(record => isSameRouteRecord(record, recordFrom)))
         updatingRecords.push(recordFrom)
       else leavingRecords.push(recordFrom)
@@ -477,6 +482,7 @@ export function extractChangingRecords(
     const recordTo = to.matched[i]
     if (recordTo) {
       // the type doesn't matter because we are comparing per reference
+      // 目标链里新出现的 record 会进入 entering 阶段。
       if (!from.matched.find(record => isSameRouteRecord(record, recordTo))) {
         enteringRecords.push(recordTo)
       }
