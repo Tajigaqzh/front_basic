@@ -3,7 +3,27 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "./dist/compiler-ssr.cjs",
+  "module": "./dist/compiler-ssr.esm.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/compiler-ssr.esm.js",
+      "require": {
+        "production": "./dist/compiler-ssr.cjs.prod",
+        "default": "./dist/compiler-ssr.cjs"
+      }
+    }
+  },
+  "dependencies": {
+    "@vue-source/shared": "workspace:*",
+    "@vue-source/compiler-dom": "workspace:*"
+  },
   "scripts": {
-    "build": "echo \"@vue-source/compiler-ssr has no build script yet.\""
+    "build": "node ../../scripts/build.js --pkg compiler-ssr && node ../../scripts/build-types.js --pkg compiler-ssr"
+  },
+  "buildOptions": {
+    "formats": ["esm", "cjs", "esm-prod", "cjs-prod"]
   }
 }

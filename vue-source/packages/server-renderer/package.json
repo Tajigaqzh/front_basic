@@ -1,0 +1,33 @@
+{
+  "name": "@vue-source/server-renderer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server-renderer.cjs",
+  "module": "./dist/server-renderer.esm.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/server-renderer.esm.js",
+      "require": {
+        "production": "./dist/server-renderer.cjs.prod",
+        "default": "./dist/server-renderer.cjs"
+      },
+      "default": "./dist/server-renderer.esm.js"
+    }
+  },
+  "dependencies": {
+    "@vue-source/compiler-core": "workspace:*",
+    "@vue-source/compiler-ssr": "workspace:*",
+    "@vue-source/runtime-core": "workspace:*",
+    "@vue-source/runtime-dom": "workspace:*",
+    "@vue-source/shared": "workspace:*"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.js --pkg server-renderer && node ../../scripts/build-types.js --pkg server-renderer"
+  },
+  "buildOptions": {
+    "formats": ["esm", "cjs", "esm-prod", "cjs-prod"]
+  }
+}

@@ -5,14 +5,32 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@vue-source/shared": ["packages/shared/src/index.ts"]
+      "@/*": ["packages/reactivity/src/*"],
+      "@vue-source/shared": ["packages/shared/src/index.ts"],
+      "@vue-source/reactivity": ["packages/reactivity/src/index.ts"],
+      "@vue-source/runtime-core": ["packages/runtime-core/src/index.ts"],
+      "@vue-source/runtime-dom": ["packages/runtime-dom/src/index.ts"],
+      "@vue-source/compiler-core": ["packages/compiler-core/src/index.ts"],
+      "@vue-source/compiler-dom": ["packages/compiler-dom/src/index.ts"],
+      "@vue-source/compiler-sfc": ["packages/compiler-sfc/src/index.ts"],
+      "@vue-source/compiler-ssr": ["packages/compiler-ssr/src/index.ts"],
+      "@vue-source/server-renderer": ["packages/server-renderer/src/index.ts"]
     },
-    "lib": ["ES2020"],
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["packages/**/*.ts"]
+  "include": [
+    "packages/**/*.ts",
+    "packages/global.d.ts",
+    "packages/external-shims.d.ts"
+  ],
+  "exclude": [
+    "packages/runtime-core/types/**/*",
+    "packages/*/test/**/*",
+    "packages/*/__tests__/**/*"
+  ]
 }
