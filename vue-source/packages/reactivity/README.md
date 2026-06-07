@@ -1,5 +1,13 @@
 # Reactivity 源码阅读指南
 
+包名：`@vue-source/reactivity`
+
+简介：
+
+- 实现 Vue 3 风格的响应式核心能力
+- 提供 `reactive`、`ref`、`computed`、`watch`、`effect` 等 API
+- 依赖 `@vue-source/shared` 提供的通用工具函数与类型工具
+
 这份文档不是讲 Vue 响应式“概念上是什么”，而是讲：
 
 `packages/reactivity/src` 这几个文件在运行时到底是怎么串起来的。
@@ -196,6 +204,49 @@ get(target, key, receiver)
 `reactive` 本身不会记依赖，真正记依赖的是 `track()`
 
 `Proxy.get` 只是把“发生了一次读取”这件事转发给 `track()`。
+
+### 为什么这里会用 `Reflect.get()`
+
+在 [src/baseHandlers.ts](./src/baseHandlers.ts) 里，真正取值时不是直接写：
+
+```ts
+const res = target[key]
+```
+
+而是写成：
+
+```ts
+const res = Reflect.get(target, key, receiver)
+```
+
+这里不只是因为 `Reflect` 和 `Proxy` 经常一起出现，更重要的是：
+
+- `Proxy`
+  负责拦截这次 `get`
+- `Reflect.get`
+  负责在拦截之后，按 JavaScript 标准语义把这次读取真正执行下去
+
+如果只写 `target[key]`，很多场景语义会不完整，尤其是：
+
+1. getter 的 `this` 绑定
+2. 原型链上的属性访问
+3. `receiver` 透传
+
+例如对象属性其实定义在原型上，或者这个属性本身是一个 getter 时：
+
+- `Reflect.get(target, key, receiver)`
+  会按标准规则处理 `this` 和原型链
+- `target[key]`
+  更像是一次粗暴的直接读取
+
+所以 Vue 在 `Proxy` 的 `get` trap 里先调用 `Reflect.get()`，本质上是为了：
+
+- 保持对象读取行为和原生 JavaScript 一致
+- 再在这个基础上追加 `track()`、`ref` 解包、嵌套对象懒代理等响应式逻辑
+
+可以把它记成一句话：
+
+**`Proxy` 负责拦截，`Reflect.get()` 负责按标准语义继续完成读取。**
 
 ### 第三步：写入属性时发生什么
 

@@ -12,5 +12,6 @@
       "@vue-source/shared": ["../shared/dist/index.d.ts"]
     }
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "../global.d.ts", "../external-shims.d.ts"],
+  "exclude": ["dist", "../*/dist", "../*/*.d.ts", "../*/*.d.ts.map"]
 }
