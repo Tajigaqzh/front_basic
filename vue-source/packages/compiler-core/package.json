@@ -3,7 +3,26 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "./dist/compiler-core.cjs",
+  "module": "./dist/compiler-core.esm.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/compiler-core.esm.js",
+      "require": {
+        "production": "./dist/compiler-core.cjs.prod",
+        "default": "./dist/compiler-core.cjs"
+      }
+    }
+  },
+  "dependencies": {
+    "@vue-source/shared": "workspace:*"
+  },
   "scripts": {
-    "build": "echo \"@vue-source/compiler-core has no build script yet.\""
+    "build": "node ../../scripts/build.js --pkg compiler-core"
+  },
+  "buildOptions": {
+    "formats": ["esm", "cjs", "esm-prod", "cjs-prod"]
   }
 }
