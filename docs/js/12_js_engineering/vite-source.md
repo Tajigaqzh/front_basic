@@ -18,6 +18,10 @@ vite-source
 这个版本不是完整生产级 Vite，而是按 1:1 的核心执行顺序复刻主要模块，
 并在关键方法、参数和分支上加了详细注释，方便你顺着源码理解运行逻辑。
 
+配套图解文档：
+
+- [Vite Source 核心流程深度图解](./vite-source-core-flow-deep-dive.md)
+
 ## 总览
 
 ```mermaid

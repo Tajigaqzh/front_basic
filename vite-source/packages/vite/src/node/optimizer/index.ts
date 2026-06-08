@@ -53,6 +53,11 @@ export async function optimizeDeps(
   config: ResolvedConfig,
   force = config.optimizeDeps.force,
 ): Promise<DepsOptimizer> {
+  /**
+   * optimizer 先扫描再决定是否复用缓存。
+   * 扫描结果参与 hash 计算，所以入口源码新增/删除 bare import 后，
+   * _metadata.json 会被判定 stale 并重新生成。
+   */
   const cacheDir = getDepsCacheDir(config)
   const metadataFile = path.join(cacheDir, '_metadata.json')
   const deps = await scanDeps(config)
@@ -61,6 +66,10 @@ export async function optimizeDeps(
   if (!force && fs.existsSync(metadataFile)) {
     const metadata = JSON.parse(await fsp.readFile(metadataFile, 'utf-8')) as DepOptimizationMetadata
     if (metadata.hash === hash) {
+      /**
+       * 复用 metadata 不只是省去文件写入，更重要的是保持 browserHash 稳定。
+       * 浏览器端依赖 URL 的 query/hash 稳定后，HTTP 缓存也可以继续命中。
+       */
       config.logger.info(`[optimizer] using cached deps metadata: ${slash(metadataFile)}`)
       return createDepsOptimizer(metadata, metadataFile)
     }
@@ -73,6 +82,11 @@ export async function optimizeDeps(
   const optimized: Record<string, OptimizedDepInfo> = {}
 
   for (const dep of deps) {
+    /**
+     * 每个 bare import 会对应一个优化产物文件。
+     * 官方 Vite 会用 esbuild/Rolldown 真实 bundle 依赖；阅读版生成代理模块，
+     * 但 metadata/file/browserHash 的生命周期和官方核心思想一致。
+     */
     const file = getOptimizedDepPath(config, dep)
     const bundled = await bundleOptimizedDep(config, dep, file)
     optimized[dep] = {
@@ -130,6 +144,13 @@ function createDepsOptimizer(
   metadata: DepOptimizationMetadata,
   metadataFile: string,
 ): DepsOptimizer {
+  /**
+   * DepsOptimizer 是 transformRequest 和 optimizedDepsPlugin 的查询表。
+   * 它不负责转换源码，只回答：
+   * - 这个 id 是不是优化依赖？
+   * - 如果是，它的缓存文件在哪里？
+   * - 这份 metadata 的来源文件在哪里？
+   */
   return {
     metadata,
     metadataFile,

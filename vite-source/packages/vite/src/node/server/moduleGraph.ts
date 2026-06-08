@@ -10,14 +10,23 @@ import { cleanUrl, slash } from '../utils.js'
 import { parseImportAnalysisAst } from '../plugins/importAnalysis.js'
 
 export interface ModuleNode {
+  /** 浏览器看到的模块 URL，例如 /src/main.ts 或 /@id/react。 */
   url: string
+  /** 插件容器解析后的内部 id，通常是绝对文件路径，也可能是虚拟模块 id。 */
   id: string
+  /** 谁 import 了当前模块。HMR 从变更模块向上找边界时依赖这个反向边。 */
   importers: Set<ModuleNode>
+  /** 当前模块 import 了哪些模块。transformRequest 更新模块信息时重建这组边。 */
   importedModules: Set<ModuleNode>
+  /** import.meta.hot.accept('./dep') 声明的可接受依赖。 */
   acceptedHmrDeps: Set<ModuleNode>
+  /** 官方用于精确 export 级 HMR；阅读版保留字段，便于和官方源码对照。 */
   acceptedHmrExports: Set<string>
+  /** import.meta.hot.accept() 无参数或回调形式代表模块可以自接受更新。 */
   isSelfAccepting: boolean
+  /** 当前模块最终转换结果缓存。HMR 失效时会被清空。 */
   transformResult: { code: string; map?: unknown } | null
+  /** 最近一次失效时间戳，用于给浏览器追加 ?t=xxx 避免 HTTP 缓存。 */
   lastInvalidationTimestamp: number
 }
 
@@ -41,6 +50,11 @@ export class ModuleGraph {
   }
 
   ensureEntryFromUrl(url: string, id = cleanUrl(url)): ModuleNode {
+    /**
+     * URL 和 id 不是一一等同的：同一个文件可能通过 /src/a.ts、带 query 的
+     * Vue 子请求、或解析后的绝对路径被访问。ensureEntryFromUrl 会尽量复用
+     * 已有节点，避免同一模块在图里分裂成多个互不相干的节点。
+     */
     const normalizedUrl = url
     let mod = this.urlToModuleMap.get(normalizedUrl) ?? this.idToModuleMap.get(id)
     if (!mod) {
@@ -63,6 +77,10 @@ export class ModuleGraph {
   }
 
   async updateModuleInfo(mod: ModuleNode, code: string): Promise<void> {
+    /**
+     * 模块每次重新 transform 后，依赖关系都要先清理再重建。
+     * 否则删除一个 import 后，旧依赖还会保留 importer 反向边，HMR 会误判影响范围。
+     */
     for (const dep of mod.importedModules) {
       dep.importers.delete(mod)
     }
@@ -74,6 +92,10 @@ export class ModuleGraph {
     mod.isSelfAccepting = ast.isSelfAccepting
 
     for (const specifier of [...ast.staticImports, ...ast.dynamicImports]) {
+      /**
+       * 这里记录的是 import-analysis 之后的 specifier，通常已经是浏览器 URL。
+       * 真实 Vite 会进一步通过 moduleGraph.resolveUrl 做更完整的 url/id 映射。
+       */
       const dep = this.ensureEntryFromUrl(specifier, specifier)
       mod.importedModules.add(dep)
       dep.importers.add(mod)
@@ -109,6 +131,10 @@ export class ModuleGraph {
   }
 
   getModulesByFile(file: string): ModuleNode[] {
+    /**
+     * 一个真实文件可能对应多个模块节点，例如 Vue SFC 的 script/template/style
+     * 子请求。HMR 从文件系统事件进入时，需要找出所有相关 ModuleNode。
+     */
     return [...new Set([...this.idToModuleMap.values()].filter((mod) => cleanUrl(mod.id) === file))]
   }
 

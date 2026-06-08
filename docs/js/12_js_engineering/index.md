@@ -14,6 +14,7 @@
 - [Vite 源码复刻核心流程](./vite-source.md)
 - [Vite Source 阅读路线](./vite-source-reading-routes.md)
 - [Vite Source 官方对照表](./vite-source-official-map.md)
+- [Vite Source 核心流程深度图解](./vite-source-core-flow-deep-dive.md)
 - [@vitejs/plugin-vue 复刻流程](./vite-plugin-vue-source.md)
 
 ## 导航

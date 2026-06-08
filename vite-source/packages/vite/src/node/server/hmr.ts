@@ -27,6 +27,11 @@ export function propagateHmrUpdate(
   graph: ModuleGraph,
   changedModules: ModuleNode[],
 ): HmrPropagationResult {
+  /**
+   * HMR 传播的核心判断不是“谁依赖了变更文件就都更新”，而是：
+   * 从变更模块沿 importers 反向走，直到找到一个 accept 边界。
+   * 找到边界就可以局部更新；走到入口还没有边界，就只能 full reload。
+   */
   const updates: HmrUpdate[] = []
   const boundaries: ModuleNode[] = []
   const seen = new Set<ModuleNode>()
@@ -40,6 +45,10 @@ export function propagateHmrUpdate(
 }
 
 export async function handleHMRUpdate(server: ViteDevServer, file: string): Promise<void> {
+  /**
+   * 文件系统事件只知道真实文件路径，HMR 需要先把它映射回 ModuleGraph 节点。
+   * 如果模块从没被浏览器请求过，它不在模块图里，改动也无需通知浏览器。
+   */
   let modules = server.moduleGraph.getModulesByFile(file)
   if (!modules.length) {
     /**
@@ -71,10 +80,16 @@ export async function handleHMRUpdate(server: ViteDevServer, file: string): Prom
   if (!modules.length) return
 
   const timestamp = Date.now()
+  /**
+   * 先失效缓存，再计算更新边界。
+   * 浏览器收到 update 后会重新 import 带时间戳的 URL，此时必须触发新转换，
+   * 不能继续使用旧的 transformResult。
+   */
   for (const mod of modules) server.moduleGraph.invalidateModule(mod, timestamp)
   const result = propagateHmrUpdate(server.moduleGraph, modules)
 
   if (result.fullReload) {
+    // 找不到可接受边界时，局部替换无法保证应用状态正确，只能整页刷新。
     server.ws.send({ type: 'full-reload' })
   } else {
     server.ws.send({
@@ -103,10 +118,18 @@ function walkToAcceptedBoundary(
   updates: HmrUpdate[],
   boundaries: ModuleNode[],
 ): boolean {
+  /**
+   * seen 防止循环依赖导致无限递归。遇到已经看过的节点时认为这条路径
+   * 不阻塞更新，继续由其它路径决定是否 full reload。
+   */
   if (seen.has(current)) return true
   seen.add(current)
 
   if (current.isSelfAccepting) {
+    /**
+     * self-accepting 是最小更新边界：模块自己声明能处理自己的新版本。
+     * 典型例子是框架运行时包装过的组件模块。
+     */
     updates.push({
       type: current.url.endsWith('.css') ? 'css-update' : 'js-update',
       path: current.url,
@@ -119,6 +142,10 @@ function walkToAcceptedBoundary(
 
   for (const importer of current.importers) {
     if (accepts(importer, changed) || accepts(importer, current)) {
+      /**
+       * importer 显式 accept 了 changed/current，说明边界在 importer。
+       * 浏览器端会重新 import acceptedPath，并调用 importer 注册的回调。
+       */
       updates.push({
         type: importer.url.endsWith('.css') ? 'css-update' : 'js-update',
         path: importer.url,
@@ -129,11 +156,16 @@ function walkToAcceptedBoundary(
       continue
     }
 
+    // 当前 importer 不是边界，就继续沿着 importer 的 importer 向应用入口查找。
     if (!walkToAcceptedBoundary(changed, importer, seen, updates, boundaries)) {
       return false
     }
   }
 
+  /**
+   * 没有 importer 且不是 self-accepting，通常说明已经到达入口模块。
+   * 入口不能被任何父模块 accept，因此这条路径需要 full reload。
+   */
   return current.importers.size > 0 || current.isSelfAccepting
 }
 

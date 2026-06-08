@@ -51,15 +51,35 @@ async function rewriteSpecifier(
   specifier: string,
   importer: string,
 ): Promise<string> {
+  /**
+   * /@vite/* 是 Vite 内部虚拟模块，例如 /@vite/client、/@vite/env。
+   * 它们已经是浏览器可请求 URL，不能再交给普通 resolver 改写。
+   */
   if (specifier.startsWith('/@vite/')) return specifier
+  /**
+   * /@id/ 和 /@fs/ 是 Vite dev server 的协议 URL：
+   * - /@id/ 表示经过编码的裸模块或虚拟模块 id。
+   * - /@fs/ 表示允许浏览器访问 root 外的真实文件系统路径。
+   */
   if (specifier.startsWith('/@id/') || specifier.startsWith('/@fs/')) return specifier
 
+  /**
+   * 优先调用 this.resolve，是因为 alias、package exports、browser 字段、
+   * optional peer、Vue 子请求等规则都集中在 resolver 插件里。
+   * import-analysis 不应该自己重新实现一套路径解析。
+   */
   const resolved = await this.resolve(specifier, cleanUrl(importer))
   if (resolved && !resolved.external) {
     const url = resolvedIdToBrowserUrl(config, resolved.id)
     return isAssetRequest(resolved.id) ? `${url}?import` : url
   }
 
+  /**
+   * 没有 resolver 接管时，按 specifier 类型做兜底：
+   * - \0 虚拟模块和裸模块编码成 /@id/。
+   * - 绝对路径保持 URL 语义。
+   * - 相对路径基于 importer 所在目录转成 root 相对 URL。
+   */
   if (specifier.startsWith('\0')) return `/@id/${encodeURIComponent(specifier)}?importer=${encodeURIComponent(cleanUrl(importer))}`
   if (isBareImport(specifier)) return `/@id/${encodeURIComponent(specifier)}?importer=${encodeURIComponent(cleanUrl(importer))}`
   if (specifier.startsWith('/')) return isAssetRequest(specifier) ? `${specifier}?import` : specifier
@@ -166,6 +186,10 @@ function rewriteImportSpecifiers(
   nodes: ImportAstNode[],
   rewrite: (specifier: string, node: ImportAstNode) => Promise<string>,
 ): Promise<string> {
+  /**
+   * 替换时必须从后往前写回字符串。
+   * 如果从前往后替换，前面 specifier 长度变化会让后续 start/end 索引失效。
+   */
   return Promise.all(nodes
     .filter(
       (
@@ -189,6 +213,12 @@ function rewriteImportSpecifiers(
 }
 
 function scanHotAcceptCalls(code: string, nodes: ImportAstNode[]): void {
+  /**
+   * 官方 Vite 会用 AST 更精确地分析 import.meta.hot.accept。
+   * 阅读版用正则保留核心形态：
+   * - accept() / accept(callback) 代表 self-accepting。
+   * - accept('./dep', callback) 代表当前模块接受某个依赖更新。
+   */
   const re = /import\.meta\.hot\.accept\s*\(([\s\S]*?)\)/g
   let match: RegExpExecArray | null
   while ((match = re.exec(code))) {

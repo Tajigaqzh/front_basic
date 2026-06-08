@@ -25,10 +25,16 @@ import { createBuildManifest } from './plugins/manifest.js'
 import { reportBuildResult } from './plugins/reporter.js'
 
 export async function build(inlineConfig: InlineConfig = {}): Promise<void> {
+  /**
+   * build 使用 command='build' 解析配置，因此插件可以通过 config.command
+   * 区分开发和生产行为。例如 import-analysis 在 build 下会替换成
+   * buildImportAnalysisPlugin，define 也会把 import.meta.hot 置为 undefined。
+   */
   const config = await resolveConfig(inlineConfig, 'build')
   const outDir = path.resolve(config.root, config.build.outDir)
 
   if (config.build.emptyOutDir && fs.existsSync(outDir)) {
+    // emptyOutDir 模拟官方默认行为：每次构建先清空输出目录，避免旧 chunk 残留。
     await fsp.rm(outDir, { recursive: true, force: true })
   }
   await fsp.mkdir(outDir, { recursive: true })
@@ -53,6 +59,11 @@ export async function build(inlineConfig: InlineConfig = {}): Promise<void> {
 
     await writeRollupOutput(config, outDir, graph.output)
 
+    /**
+     * Rollup 只关心 JS/CSS/assets 输出，不会自动替换 index.html 里的入口脚本。
+     * Vite build 的 HTML 阶段会把原始 <script type="module" src="/src/main.ts">
+     * 替换成最终带 hash 的 chunk 文件，并注入抽取出来的 CSS link。
+     */
     html = replaceHtmlEntryScripts(config, html, entries, graph.chunks)
     html = injectBuildCssLinks(config, html, graph.css)
     html = await pluginContainer.transformIndexHtml(html, { path: '/index.html' })
@@ -81,6 +92,10 @@ interface BuildEntry {
 }
 
 function resolveBuildEntries(config: Awaited<ReturnType<typeof resolveConfig>>, html: string): BuildEntry[] {
+  /**
+   * 入口优先级和官方一致：用户显式 rollupOptions.input 优先；
+   * 没有配置时，从 index.html 的 module script 推导应用入口。
+   */
   const input = config.build.rollupOptions?.input
   if (typeof input === 'string') return [toBuildEntry(config, input)]
   if (Array.isArray(input)) return input.map((item) => toBuildEntry(config, item))
@@ -99,6 +114,11 @@ function resolveBuildEntries(config: Awaited<ReturnType<typeof resolveConfig>>, 
 }
 
 function toBuildEntry(config: ResolvedConfig, entry: string, name?: string): BuildEntry {
+  /**
+   * Rollup input 需要真实 id，HTML 替换需要浏览器 URL。
+   * BuildEntry 同时保存二者，后续 replaceHtmlEntryScripts 才能用 url 找旧标签、
+   * 用 facadeModuleId 找生成后的 entry chunk。
+   */
   const id = normalizeEntry(config, entry)
   return {
     name: name ?? sanitizeChunkName(path.basename(cleanUrl(entry), path.extname(cleanUrl(entry)))),
@@ -186,6 +206,11 @@ function createRollupOptions(
   entries: BuildEntry[],
   cssAssets: BuildCssAsset[],
 ): RollupOptions {
+  /**
+   * 这里没有把 Vite 插件数组直接传给 Rollup，而是只传一个 adapter。
+   * 原因是阅读版插件运行在 PluginContainer 里，adapter 负责把 Rollup 的
+   * resolve/load/transform 调用转发进去，确保 dev 和 build 复用同一套插件行为。
+   */
   return {
     input: Object.fromEntries(entries.map((entry) => [entry.name, entry.id])),
     external: config.build.rollupOptions?.external as RollupOptions['external'],
@@ -199,6 +224,11 @@ function createRollupOptions(
 }
 
 function createRollupOutputOptions(config: ResolvedConfig): OutputOptions {
+  /**
+   * output 选项决定最终文件命名和拆包策略。
+   * manualChunks、entryFileNames、chunkFileNames 这些配置完全属于 bundler 输出层，
+   * 所以它们在 Vite 完成插件转换之后才被 Rollup 使用。
+   */
   const output = config.build.rollupOptions?.output
   const format = output?.format === 'esm' ? 'es' : output?.format
 
@@ -241,6 +271,11 @@ function viteBuildRollupPlugin(
     async load(id) {
       const loaded = await pluginContainer.load(id)
       if (loaded && isBuildCssRequest(id)) {
+        /**
+         * dev 阶段 CSS 是“执行 JS 后插入 style 标签”。
+         * build 阶段不能继续这样做，否则首屏样式依赖 JS 执行；因此这里把
+         * cssPlugin 生成的 JS 中的 css 字符串抽取成独立 CSS asset。
+         */
         const extracted = extractCssFromJs(loaded.code, id)
         if (extracted) {
           const fileName = `assets/${sanitizeChunkName(path.basename(cleanUrl(id)).replace(/\.[^.]+$/, ''))}.${shortHash(extracted.css)}.css`
@@ -262,6 +297,7 @@ function viteBuildRollupPlugin(
     async transform(code, id) {
       const transformed = await pluginContainer.transform(code, id)
       if (isBuildCssRequest(id)) {
+        // 某些 CSS 可能在 transform 阶段才产生最终注入代码，所以这里再抽取一次。
         const extracted = extractCssFromJs(transformed.code, id)
         if (extracted) {
           const fileName = `assets/${sanitizeChunkName(path.basename(cleanUrl(id)).replace(/\.[^.]+$/, ''))}.${shortHash(extracted.css)}.css`
@@ -290,6 +326,10 @@ function flushPluginContainerEmittedFiles(
   rollupContext: { emitFile(file: any): string },
   pluginContainer: PluginContainer,
 ): void {
+  /**
+   * Vite 插件在 PluginContainer context 里调用 emitFile 时，文件先暂存在容器中。
+   * Rollup 真正拥有输出图，所以 adapter 必须把暂存文件 flush 给 Rollup context。
+   */
   for (const file of pluginContainer.takeEmittedFiles()) {
     if (file.type === 'asset') {
       rollupContext.emitFile({

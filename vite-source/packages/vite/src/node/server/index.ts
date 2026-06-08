@@ -44,6 +44,16 @@ export function createServer(inlineConfig: InlineConfig = {}): Promise<ViteDevSe
 
 export async function _createServer(inlineConfig: InlineConfig = {}): Promise<ViteDevServer> {
   const start = performance.now()
+  /**
+   * createServer 的组装顺序非常重要：
+   *
+   * 1. resolveConfig 先确定 root/base/mode/插件链/默认 server 配置。
+   * 2. createPluginContainer 把 Vite/Rollup 风格插件钩子包装成统一调用入口。
+   * 3. ModuleGraph 记录 URL、resolved id、依赖关系、HMR 边界和 transform 缓存。
+   * 4. optimizeDeps 预扫描 node_modules 依赖，让 dev 请求可以走缓存产物。
+   *
+   * 这四个对象随后被挂到 ViteDevServer 上，所有 middleware 和插件都共享它们。
+   */
   const config = await resolveConfig(inlineConfig, 'serve')
   const pluginContainer = await createPluginContainer(config)
   const moduleGraph = new ModuleGraph()
@@ -54,6 +64,10 @@ export async function _createServer(inlineConfig: InlineConfig = {}): Promise<Vi
   let server!: ViteDevServer
   let handleRequest!: (req: any, res: any) => Promise<void>
 
+  /**
+   * Node http server 只负责收请求；真正的处理逻辑晚一点才赋值给 handleRequest。
+   * 这样 server 对象可以先创建出来，并传给 configureServer/middleware 闭包使用。
+   */
   const httpServer = createHttpServer(async (req: any, res: any) => {
     await handleRequest(req, res)
   })
@@ -70,6 +84,10 @@ export async function _createServer(inlineConfig: InlineConfig = {}): Promise<Vi
     watcher,
     httpServer,
     async listen(port = config.server.port ?? DEFAULT_DEV_PORT) {
+      /**
+       * listen 之后才开始 watchRoot，是因为只有服务真正可用时，HMR 事件
+       * 才有意义。官方 Vite 使用 chokidar，这里用 fs.watch 保留核心模型。
+       */
       await new Promise<void>((resolve) => {
         httpServer.listen(port, config.server.host || '0.0.0.0', resolve)
       })
@@ -78,9 +96,15 @@ export async function _createServer(inlineConfig: InlineConfig = {}): Promise<Vi
       return server
     },
     transformRequest(url) {
+      /**
+       * server.transformRequest 是插件和 SSR 也会用到的公共能力。
+       * 它把 request URL 交给 transformRequest.ts，后者会执行
+       * resolveId -> load -> transform -> update ModuleGraph。
+       */
       return transformRequest({ config, pluginContainer, moduleGraph, depsOptimizer, pendingRequests }, url)
     },
     transformIndexHtml(url, html) {
+      // HTML 转换走独立钩子，因为 HTML 既是入口文档，也是注入 dev client 的位置。
       return pluginContainer.transformIndexHtml(html, { path: url, server })
     },
     printUrls() {
@@ -96,9 +120,21 @@ export async function _createServer(inlineConfig: InlineConfig = {}): Promise<Vi
   }
 
   for (const plugin of config.plugins) {
+    /**
+     * configureServer 允许插件在中间件栈创建前拿到 server。
+     * 官方插件常在这里注册自定义 middleware、WebSocket 事件或保存 server 引用。
+     */
     await plugin.configureServer?.(server)
   }
 
+  /**
+   * 中间件顺序就是 dev server 请求生命周期：
+   * host/cors/time/base/proxy 先处理协议层问题；
+   * transform 尝试把 JS/CSS/资源请求交给插件链；
+   * public/static 兜底静态文件；
+   * htmlFallback/indexHtml 处理 SPA 和 HTML 入口；
+   * notFound 最后返回 404。
+   */
   handleRequest = createMiddlewareRunner(server, [
     hostCheckMiddleware(server),
     corsMiddleware(server),
@@ -122,6 +158,11 @@ function watchRoot(server: ViteDevServer, watcher: DevServerWatcher): void {
       if (!filename) return
       const file = path.join(server.config.root, filename)
       watcher.emit('change', file)
+      /**
+       * 文件变化进入 HMR 后不会直接通知浏览器“文件变了”。
+       * handleHMRUpdate 会先查 ModuleGraph，运行插件 handleHotUpdate，
+       * 再决定发送 js-update/css-update 还是 full-reload。
+       */
       handleHMRUpdate(server, file).catch((error) => server.config.logger.error(error))
     })
   } catch {
@@ -146,6 +187,11 @@ function createMiddlewareRunner(server: ViteDevServer, middlewares: Middleware[]
       if (!middleware) return
 
       try {
+        /**
+         * 这是一个最小版 connect/koa 洋葱模型。
+         * 每个 middleware 可以选择处理响应并停止，也可以 await next()
+         * 把请求交给后续 middleware。
+         */
         await middleware(req, res, dispatch)
       } catch (caught) {
         handleError(caught, req, res)
@@ -160,6 +206,7 @@ export class DevServerWatcher {
   private readonly listeners = new Map<string, Set<(file: string) => void>>()
 
   on(event: string, listener: (file: string) => void): this {
+    // 阅读版 watcher 只保留插件最常用的 on/off/emit 事件模型。
     const set = this.listeners.get(event) ?? new Set()
     set.add(listener)
     this.listeners.set(event, set)
