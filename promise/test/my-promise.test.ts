@@ -1,3 +1,5 @@
+/// <reference lib="es2021.promise" />
+
 import { describe, expect, test } from "vitest";
 
 import { MyPromise } from "../index";

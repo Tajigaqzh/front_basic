@@ -1,16 +1,24 @@
 // Promise 只会处于这三种状态之一，而且状态一旦改变就不能回退。
 type MyPromiseState = "pending" | "fulfilled" | "rejected";
 
+// Promise/A+ thenable 只要求有 then 方法，不要求 then 方法本身返回 PromiseLike。
+type MyPromiseThenable<T> = {
+    then(
+        onFulfilled: (value: T) => unknown,
+        onRejected?: (reason?: unknown) => unknown,
+    ): unknown;
+};
+
 // 执行器函数会在 new MyPromise(...) 时立刻执行，并拿到 resolve/reject。
 type MyPromiseExecutor<T> = (
-    resolve: (value?: T | PromiseLike<T>) => void,
+    resolve: (value?: T | MyPromiseThenable<T>) => void,
     reject: (reason?: unknown) => void,
 ) => void;
 
 // then 成功回调：接收当前 Promise 的成功值，返回普通值或新的 thenable。
-type OnFulfilled<T, TResult> = (value: T) => TResult | PromiseLike<TResult>;
+type OnFulfilled<T, TResult> = (value: T) => TResult | MyPromiseThenable<TResult>;
 // then 失败回调：接收拒绝原因，返回普通值或新的 thenable。
-type OnRejected<TResult> = (reason: unknown) => TResult | PromiseLike<TResult>;
+type OnRejected<TResult> = (reason: unknown) => TResult | MyPromiseThenable<TResult>;
 // finally 回调不接收参数，只做收尾逻辑。
 type OnFinally = () => unknown;
 
@@ -65,13 +73,13 @@ export class MyPromise<T = unknown> {
             return undefined;
         }
 
-        return (value as PromiseLike<T>).then;
+        return (value as MyPromiseThenable<T>).then;
     }
 
     constructor(executor: MyPromiseExecutor<T>) {
         // resolve 负责把 Promise 从 pending 推进到 fulfilled，
-        // 或者继续“吸收”传入的 thenable / PromiseLike。
-        const resolve = (value?: T | PromiseLike<T>) => {
+        // 或者继续“吸收”传入的 thenable。
+        const resolve = (value?: T | MyPromiseThenable<T>) => {
             // Promise 状态只能改一次，后续 resolve/reject 都忽略。
             if (this.state !== "pending") {
                 return;
@@ -132,8 +140,8 @@ export class MyPromise<T = unknown> {
     // then 回调返回什么，就把 promise2 解析成什么。
     private static resolvePromise<TResult>(
         promise2: MyPromise<TResult>,
-        x: TResult | PromiseLike<TResult>,
-        resolve: (value?: TResult | PromiseLike<TResult>) => void,
+        x: TResult | MyPromiseThenable<TResult>,
+        resolve: (value?: TResult | MyPromiseThenable<TResult>) => void,
         reject: (reason?: unknown) => void,
     ) {
         // then 返回自身会造成死循环，必须拒绝。
@@ -152,7 +160,7 @@ export class MyPromise<T = unknown> {
                 if (typeof then === "function") {
                     then.call(
                         x,
-                        (y: TResult | PromiseLike<TResult>) => {
+                        (y: TResult | MyPromiseThenable<TResult>) => {
                             if (called) {
                                 return;
                             }
@@ -209,7 +217,7 @@ export class MyPromise<T = unknown> {
                     // 执行成功回调，拿到它的返回值 x。
                     const x = realOnFulfilled(this.value);
                     // 再把 x 解析给新的 promise2。
-                    MyPromise.resolvePromise(promise2, x as TResult1 | PromiseLike<TResult1>, resolve, reject);
+                    MyPromise.resolvePromise(promise2, x as TResult1 | MyPromiseThenable<TResult1>, resolve, reject);
                 } catch (error) {
                     reject(error);
                 }
@@ -220,7 +228,7 @@ export class MyPromise<T = unknown> {
                     // 执行失败回调，拿到它的返回值 x。
                     const x = realOnRejected(this.reason);
                     // 失败回调如果返回普通值，后续链会转成 fulfilled。
-                    MyPromise.resolvePromise(promise2, x as TResult2 | PromiseLike<TResult2>, resolve, reject);
+                    MyPromise.resolvePromise(promise2, x as TResult2 | MyPromiseThenable<TResult2>, resolve, reject);
                 } catch (error) {
                     reject(error);
                 }
@@ -278,7 +286,7 @@ export class MyPromise<T = unknown> {
 
     // resolve 会返回一个成功态 Promise；
     // 如果传入 Promise/thenable，则跟随它的最终状态。
-    public static resolve<T>(value?: T | PromiseLike<T>) {
+    public static resolve<T>(value?: T | MyPromiseThenable<T>) {
         if (value instanceof MyPromise) {
             return value as MyPromise<Awaited<T>>;
         }
