@@ -1,0 +1,11 @@
+{
+  "name": "@front/local-vite-local-vue-playground",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node ../../packages/vite/dist/node/cli.js --host 127.0.0.1",
+    "build": "node ../../packages/vite/dist/node/cli.js build",
+    "preview": "node ../../packages/vite/dist/node/cli.js preview --host 127.0.0.1"
+  }
+}
