@@ -6,6 +6,13 @@
 
 ![React TS 源码复刻渲染流程](./assets/react-ts-render-flow.svg)
 
+配套精读文档：
+
+- [React 复刻版源码注释阅读地图](./react-source-comment-map.md)
+- [React 源码注释逐文件审查表](./react-source-comment-audit.md)
+- [React 渲染原理小白图解](./react-render-flow-beginner.md)
+- [React Hooks 实现原理小白图解](./react-hooks-deep-dive.md)
+
 | 本实现 | 参考 React 源码文件 | 作用 |
 | --- | --- | --- |
 | `packages/react/src/jsx/ReactJSXElement.ts` | `packages/react/src/jsx/ReactJSXElement.js` | 创建 ReactElement 描述对象 |

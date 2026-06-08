@@ -5,6 +5,10 @@
 ## 已补充内容
 
 - [React TypeScript 源码复刻](./react-ts-source.md)
+- [React 复刻版源码注释阅读地图](./react-source-comment-map.md)
+- [React 源码注释逐文件审查表](./react-source-comment-audit.md)
+- [React 渲染原理小白图解](./react-render-flow-beginner.md)
+- [React Hooks 实现原理小白图解](./react-hooks-deep-dive.md)
 
 ## 覆盖主题
 

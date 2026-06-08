@@ -1,11 +1,20 @@
+/**
+ * @beginner-module: 源码导读
+ * 本文件属于 DOM 绑定层，负责创建/更新 DOM 属性、事件、表单值或宿主配置。
+ * 阅读建议：先看这些中文注释建立概念，再回到代码名和类型名理解真实实现。
+ */
+// @beginner: 引入类型，只在 TypeScript 编译期使用，运行时不会生成代码。
 import type { EventHandleOptions, ReactDOMEventHandle } from "./ReactDOMEventHandleTypes.js";
 
+// @beginner: 进入 createEventHandle：这是一个可复用步骤，调用方通过它完成一段明确逻辑。
 export function createEventHandle(type: string, options?: EventHandleOptions): ReactDOMEventHandle {
+  // @beginner: 返回当前函数的结果；调用方会基于这个值继续后续流程。
   return function eventHandle(target: EventTarget, callback: (event: Event) => void): () => void {
     target.addEventListener(type, callback, {
       capture: Boolean(options?.capture),
       passive: options?.passive,
     });
+    // @beginner: 返回当前函数的结果；调用方会基于这个值继续后续流程。
     return () => target.removeEventListener(type, callback, Boolean(options?.capture));
   };
 }
