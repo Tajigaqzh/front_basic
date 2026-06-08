@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "declaration": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "lib": ["ES2022", "DOM"],
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "shared": ["packages/shared/index.ts"],
+      "shared/*": ["packages/shared/*"],
+      "scheduler": ["packages/scheduler/src/index.ts"],
+      "scheduler/*": ["packages/scheduler/src/*"],
+      "react": ["packages/react/src/index.ts"],
+      "react/jsx-runtime": ["packages/react/src/jsx-runtime.ts"],
+      "react/jsx-dev-runtime": ["packages/react/src/jsx-dev-runtime.ts"],
+      "react/*": ["packages/react/*"],
+      "react-dom": ["packages/react-dom/src/shared/ReactDOM.ts"],
+      "react-dom/client": ["packages/react-dom/src/client/ReactDOMClient.ts"],
+      "react-dom/client/*": ["packages/react-dom/src/client/*"],
+      "react-dom/*": ["packages/react-dom/*"],
+      "react-dom-bindings/*": ["packages/react-dom-bindings/*"],
+      "react-reconciler": ["packages/react-reconciler/src/ReactFiberReconciler.ts"],
+      "react-reconciler/*": ["packages/react-reconciler/*"],
+      "react-is": ["packages/react-is/src/index.ts"],
+      "react-refresh": ["packages/react-refresh/src/index.ts"],
+      "react-cache": ["packages/react-cache/src/index.ts"],
+      "use-sync-external-store": ["packages/use-sync-external-store/src/index.ts"],
+      "use-sync-external-store/*": ["packages/use-sync-external-store/*"],
+      "use-subscription": ["packages/use-subscription/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src/**/*.ts"]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "react-dom",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./client": "./src/client/ReactDOMClient.ts"
+  },
+  "dependencies": {
+    "react-reconciler": "workspace:*",
+    "shared": "workspace:*"
+  }
+}

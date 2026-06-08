@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="420" viewBox="0 0 1120 420" role="img" aria-labelledby="title desc">
+  <title id="title">React TS 源码复刻渲染流程图</title>
+  <desc id="desc">从 ReactElement 创建、调度、render 阶段到 commit 阶段的核心流程。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#4b5563" />
+    </marker>
+    <style>
+      .bg { fill: #f8fafc; }
+      .box { fill: #ffffff; stroke: #2563eb; stroke-width: 2; rx: 8; }
+      .commit { fill: #fff7ed; stroke: #ea580c; stroke-width: 2; rx: 8; }
+      .text { fill: #0f172a; font-family: Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 18px; font-weight: 700; }
+      .sub { fill: #475569; font-family: Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 13px; }
+      .arrow { stroke: #4b5563; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+      .lane { fill: #e0f2fe; stroke: #0284c7; stroke-width: 1.5; rx: 10; }
+      .laneText { fill: #075985; font-family: Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 15px; font-weight: 700; }
+    </style>
+  </defs>
+  <rect class="bg" width="1120" height="420" rx="18" />
+  <rect class="lane" x="34" y="32" width="338" height="48" />
+  <text class="laneText" x="54" y="62">React 层：描述 UI</text>
+  <rect class="lane" x="404" y="32" width="338" height="48" />
+  <text class="laneText" x="424" y="62">Reconciler 层：构建 Fiber</text>
+  <rect class="lane" x="774" y="32" width="312" height="48" />
+  <text class="laneText" x="794" y="62">ReactDOM 层：提交 DOM</text>
+
+  <rect class="box" x="42" y="130" width="190" height="88" />
+  <text class="text" x="64" y="164">createElement</text>
+  <text class="sub" x="64" y="190">生成 ReactElement</text>
+
+  <rect class="box" x="282" y="130" width="190" height="88" />
+  <text class="text" x="306" y="164">root.render</text>
+  <text class="sub" x="306" y="190">写入 HostRoot</text>
+
+  <rect class="box" x="522" y="130" width="190" height="88" />
+  <text class="text" x="548" y="164">beginWork</text>
+  <text class="sub" x="548" y="190">调和 children</text>
+
+  <rect class="box" x="762" y="130" width="190" height="88" />
+  <text class="text" x="780" y="164">completeWork</text>
+  <text class="sub" x="780" y="190">创建 DOM 节点</text>
+
+  <rect class="commit" x="430" y="286" width="260" height="88" />
+  <text class="text" x="468" y="320">commitRoot</text>
+  <text class="sub" x="468" y="346">根据 flags 修改真实 DOM</text>
+
+  <rect class="commit" x="760" y="286" width="278" height="88" />
+  <text class="text" x="788" y="320">Placement / Update / Delete</text>
+  <text class="sub" x="788" y="346">appendChild / patch / removeChild</text>
+
+  <path class="arrow" d="M232 174 H282" />
+  <path class="arrow" d="M472 174 H522" />
+  <path class="arrow" d="M712 174 H762" />
+  <path class="arrow" d="M857 218 C857 260, 690 250, 652 286" />
+  <path class="arrow" d="M690 330 H760" />
+  <path class="arrow" d="M560 286 C520 250, 617 236, 617 218" />
+</svg>

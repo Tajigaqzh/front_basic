@@ -1,0 +1,21 @@
+{
+  "name": "@front/react-source-playground",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "../../node_modules/.bin/vite --host 127.0.0.1 --force",
+    "build": "../../node_modules/.bin/vite build",
+    "preview": "../../node_modules/.bin/vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "react": "file:../build/node_modules/react",
+    "react-dom": "file:../build/node_modules/react-dom",
+    "react-cache": "file:../build/node_modules/react-cache",
+    "scheduler": "file:../build/node_modules/scheduler",
+    "use-sync-external-store": "file:../build/node_modules/use-sync-external-store"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

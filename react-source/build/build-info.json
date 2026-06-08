@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-06-08T06:16:22.022Z",
+  "bundles": [
+    "react/index",
+    "react/jsx-runtime",
+    "react/jsx-dev-runtime",
+    "react-dom/client",
+    "react-dom/index",
+    "scheduler/index",
+    "react-reconciler/index",
+    "react-is/index",
+    "react-cache/index",
+    "react-refresh/index",
+    "use-sync-external-store/index",
+    "use-sync-external-store/with-selector",
+    "use-subscription/index"
+  ]
+}

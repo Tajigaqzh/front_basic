@@ -1,14 +1,19 @@
 # React Source
 
-这个目录用于整理 React 源码分析。
+这个目录用于整理 React 源码分析与源码复刻。
 
-## 可补充内容
+## 已补充内容
 
-- Fiber
+- [React TypeScript 源码复刻](./react-ts-source.md)
+
+## 覆盖主题
+
+- ReactElement 与 JSX runtime
+- Fiber 数据结构与双缓存
 - 调度机制
-- 渲染流程
+- beginWork / completeWork / commitWork 渲染流程
 - Hook 内部实现
-- 更新队列
+- 更新队列与 DOM 提交
 
 ## 导航
 

@@ -1,0 +1,33 @@
+{
+  "name": "@front/react-source",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/packages/react/src/index.js",
+  "types": "./dist/packages/react/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/packages/react/src/index.d.ts",
+      "default": "./dist/packages/react/src/index.js"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/packages/react/src/jsx-runtime.d.ts",
+      "default": "./dist/packages/react/src/jsx-runtime.js"
+    },
+    "./client": {
+      "types": "./dist/packages/react-dom/src/client/ReactDOMClient.d.ts",
+      "default": "./dist/packages/react-dom/src/client/ReactDOMClient.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/rollup/build.js",
+    "build:types": "tsc -p tsconfig.json",
+    "build:rollup": "node scripts/rollup/build.js",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

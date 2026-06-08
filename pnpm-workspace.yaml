@@ -6,5 +6,6 @@ packages:
   - "vue-source"
   - "vue-demo"
   - "pinia-source"
+  - "react-source"
   - "vue-router-source"
   - "vite-source"

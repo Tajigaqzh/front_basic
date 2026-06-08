@@ -1,0 +1,25 @@
+const variant = false;
+
+export const alwaysThrottleRetries = variant;
+export const disableLegacyContextForFunctionComponents = variant;
+export const disableSchedulerTimeoutInWorkLoop = variant;
+export const enableNoCloningMemoCache = variant;
+export const enableObjectFiber = variant;
+export const enableRetryLaneExpiration = variant;
+export const enableTransitionTracing = variant;
+export const retryLaneExpirationMs = 5000;
+export const syncLaneExpirationMs = 250;
+export const transitionLaneExpirationMs = 5000;
+export const enableSchedulingProfiler = variant;
+export const enableInfiniteRenderLoopDetection = variant;
+export const enableInfiniteRenderLoopDetectionForceThrow = variant;
+export const enableFastAddPropertiesInDiffing = variant;
+export const enableSuspenseyImages = variant;
+export const enableViewTransition = variant;
+export const enableScrollEndPolyfill = variant;
+export const enableFragmentRefs = variant;
+export const enableFragmentRefsScrollIntoView = variant;
+export const enableFragmentRefsTextNodes = variant;
+export const enableInternalInstanceMap = variant;
+export const enableParallelTransitions = variant;
+export const enableEffectEventMutationPhase = variant;
