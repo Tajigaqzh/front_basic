@@ -23,6 +23,7 @@ export default defineConfig({
             { text: "HTML", link: "/html/" },
             { text: "CSS", link: "/css/" },
             { text: "JavaScript", link: "/js/" },
+            { text: "构建工具", link: "/build_tool/" },
             { text: "React", link: "/react/" },
             { text: "Vue", link: "/vue/" },
         ],
@@ -85,6 +86,17 @@ export default defineConfig({
                     { text: "20 Worker", link: "/js/20_js_worker/" },
                     { text: "21 Wasm", link: "/js/21_js_wasm/" },
                     { text: "22 AI Chat", link: "/js/22_js_aiChat/" },
+                ],
+            },
+            {
+                text: "构建工具",
+                items: [
+                    { text: "构建工具概览", link: "/build_tool/" },
+                    { text: "Vite 源码复刻", link: "/build_tool/vite/" },
+                    { text: "Vite Dev Server 主流程", link: "/build_tool/vite/dev-server-flow" },
+                    { text: "Vite 插件 hook", link: "/build_tool/vite/plugin-hooks" },
+                    { text: "Vite HMR 原理", link: "/build_tool/vite/hmr-and-hot-hooks" },
+                    { text: "Vue / React 插件实现", link: "/build_tool/vite/framework-plugins" },
                 ],
             },
             {
