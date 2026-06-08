@@ -684,8 +684,8 @@ SSR 专用 JS AST
 
 如果你想先看更大的地图，再回来看这篇，建议先读：
 
-- [compiler-core-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/compiler-core-overview.md)
-- [compiler-dom-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-on-top-of-compiler-core.md)
+- [compiler-core-overview.md](../compiler-core/compiler-core-overview.md)
+- [compiler-dom-on-top-of-compiler-core.md](../compiler-dom/compiler-dom-on-top-of-compiler-core.md)
 
 ---
 

@@ -15,8 +15,8 @@
 
 如果你前面已经看过这两篇：
 
-- [template-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/template-ast-flow.md)
-- [vfor-component-slot-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/vfor-component-slot-ast-flow.md)
+- [template-ast-flow.md](./template-ast-flow.md)
+- [vfor-component-slot-ast-flow.md](./vfor-component-slot-ast-flow.md)
 
 那这篇可以当成它们的“总地图”。
 
@@ -655,9 +655,9 @@ transform 的职责就是把两者连接起来。
 
 1. 先看这篇总览，知道整条流水线长什么样
 2. 再看基础案例
-   - [template-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/template-ast-flow.md)
+   - [template-ast-flow.md](./template-ast-flow.md)
 3. 再看复杂案例
-   - [vfor-component-slot-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/vfor-component-slot-ast-flow.md)
+   - [vfor-component-slot-ast-flow.md](./vfor-component-slot-ast-flow.md)
 
 这样你会同时具备：
 

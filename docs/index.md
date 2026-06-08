@@ -53,4 +53,4 @@
 - [AI Chat 请求流程](./js/22_js_aiChat/request-flow.md)
 - [AI Chat 后端流式接口](./js/22_js_aiChat/backend-stream.md)
 - [AI Chat 前端流式消费](./js/22_js_aiChat/frontend-stream.md)
-- [Reactivity 原理](./vue/source/reactivity-overview.md)
+- [Reactivity 原理](./vue/source/reactivity/reactivity-overview.md)

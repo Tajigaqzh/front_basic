@@ -529,12 +529,12 @@ $slots.default({ row: item })
 
 如果想先看更大的地图，再配合这篇看，可以先读：
 
-- [compiler-core-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/compiler-core-overview.md)
+- [compiler-core-overview.md](./compiler-core-overview.md)
 
 如果想看具体 AST 案例，可以回看：
 
-- [template-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/template-ast-flow.md)
-- [vfor-component-slot-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/vfor-component-slot-ast-flow.md)
+- [template-ast-flow.md](./template-ast-flow.md)
+- [vfor-component-slot-ast-flow.md](./vfor-component-slot-ast-flow.md)
 
 ---
 

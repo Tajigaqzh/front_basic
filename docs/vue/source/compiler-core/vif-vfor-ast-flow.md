@@ -540,13 +540,13 @@ IfNode
 建议一起看：
 
 - 总览：
-  - [compiler-core-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/compiler-core-overview.md)
+  - [compiler-core-overview.md](./compiler-core-overview.md)
 
 - 基础案例：
-  - [template-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/template-ast-flow.md)
+  - [template-ast-flow.md](./template-ast-flow.md)
 
 - `v-for + component + slot`：
-  - [vfor-component-slot-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/vfor-component-slot-ast-flow.md)
+  - [vfor-component-slot-ast-flow.md](./vfor-component-slot-ast-flow.md)
 
 这样你就能把：
 

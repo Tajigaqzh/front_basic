@@ -521,17 +521,17 @@ html string push logic
 建议和这些文档配合看：
 
 - 总览：
-  - [compiler-core-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/compiler-core-overview.md)
+  - [compiler-core-overview.md](../compiler-core/compiler-core-overview.md)
 
 - slot 基础关系：
-  - [slot-outlet-and-slots-relation.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/slot-outlet-and-slots-relation.md)
+  - [slot-outlet-and-slots-relation.md](../compiler-core/slot-outlet-and-slots-relation.md)
 
 - 平台层扩展：
-  - [compiler-dom-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-on-top-of-compiler-core.md)
-  - [compiler-ssr-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
+  - [compiler-dom-on-top-of-compiler-core.md](../compiler-dom/compiler-dom-on-top-of-compiler-core.md)
+  - [compiler-ssr-on-top-of-compiler-core.md](../compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
 
 - 另一个 DOM vs SSR 对照：
-  - [dom-vs-ssr-side-by-side.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/dom-vs-ssr-side-by-side.md)
+  - [dom-vs-ssr-side-by-side.md](./dom-vs-ssr-side-by-side.md)
 
 ---
 

@@ -512,5 +512,5 @@ vModelIdentifiers:
 
 然后再接：
 
-1. [compiler-sfc 总览](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/compiler-sfc-overview.md)
-2. [script setup 宏如何落成运行时代码](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/script-setup-macros-and-runtime.md)
+1. [compiler-sfc 总览](./compiler-sfc-overview.md)
+2. [script setup 宏如何落成运行时代码](./script-setup-macros-and-runtime.md)

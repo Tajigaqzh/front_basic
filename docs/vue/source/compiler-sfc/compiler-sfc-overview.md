@@ -506,8 +506,8 @@ descriptor.styles[]
 
 如果你已经读过前面的编译器文档，接下来建议这样接：
 
-1. 先读 [compiler-dom 如何扩展 compiler-core](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-on-top-of-compiler-core.md)
-2. 再读当前这篇 [compiler-sfc 总览](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/compiler-sfc-overview.md)
+1. 先读 [compiler-dom 如何扩展 compiler-core](../compiler-dom/compiler-dom-on-top-of-compiler-core.md)
+2. 再读当前这篇 [compiler-sfc 总览](./compiler-sfc-overview.md)
 3. 然后按顺序读源码：
 4. [parse.ts](/Users/nwyzx/Desktop/project/source/front_basic/vue-source/packages/compiler-sfc/src/parse.ts)
 5. [compileScript.ts](/Users/nwyzx/Desktop/project/source/front_basic/vue-source/packages/compiler-sfc/src/compileScript.ts)

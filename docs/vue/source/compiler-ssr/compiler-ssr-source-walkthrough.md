@@ -6,7 +6,7 @@
 
 这篇默认你已经看过：
 
-- [compiler-ssr 如何复用 compiler-core](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
+- [compiler-ssr 如何复用 compiler-core](./compiler-ssr-on-top-of-compiler-core.md)
 
 ---
 
@@ -386,8 +386,8 @@ ssrCodegenTransform
 
 接下来最顺的阅读路径是：
 
-1. [DOM 和 SSR 并排对照](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/dom-vs-ssr-side-by-side.md)
-2. [component + slot 在 DOM 和 SSR 下的并排对照](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/component-slot-dom-vs-ssr.md)
+1. [DOM 和 SSR 并排对照](../compiler-compare/dom-vs-ssr-side-by-side.md)
+2. [component + slot 在 DOM 和 SSR 下的并排对照](../compiler-compare/component-slot-dom-vs-ssr.md)
 
 如果你准备继续回源码，建议再回看：
 

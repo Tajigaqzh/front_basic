@@ -527,6 +527,6 @@ console.log(total)
 
 接下来最适合继续读的是：
 
-1. [script setup 宏如何落成运行时代码](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/script-setup-macros-and-runtime.md)
-2. [bindingMetadata 和模板标识符分析](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/binding-metadata-and-template-identifiers.md)
-3. [顶层 await 与 CSS vars 辅助链路](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/top-level-await-and-css-vars.md)
+1. [script setup 宏如何落成运行时代码](./script-setup-macros-and-runtime.md)
+2. [bindingMetadata 和模板标识符分析](./binding-metadata-and-template-identifiers.md)
+3. [顶层 await 与 CSS vars 辅助链路](./top-level-await-and-css-vars.md)

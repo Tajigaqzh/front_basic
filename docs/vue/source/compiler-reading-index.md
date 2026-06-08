@@ -25,22 +25,22 @@
 
 最推荐的起步顺序是：
 
-1. [compiler-core-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/compiler-core-overview.md)
-2. [template-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/template-ast-flow.md)
-3. [vfor-component-slot-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/vfor-component-slot-ast-flow.md)
-4. [slot-outlet-and-slots-relation.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/slot-outlet-and-slots-relation.md)
-5. [vif-vfor-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/vif-vfor-ast-flow.md)
-6. [compiler-dom-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-on-top-of-compiler-core.md)
-7. [compiler-dom-source-walkthrough.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-source-walkthrough.md)
-8. [compiler-sfc-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/compiler-sfc-overview.md)
-9. [script-setup-macros-and-runtime.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/script-setup-macros-and-runtime.md)
-10. [binding-metadata-and-template-identifiers.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/binding-metadata-and-template-identifiers.md)
-11. [props-destructure-and-type-resolution.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/props-destructure-and-type-resolution.md)
-12. [top-level-await-and-css-vars.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/top-level-await-and-css-vars.md)
-13. [compiler-ssr-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
-14. [compiler-ssr-source-walkthrough.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-source-walkthrough.md)
-15. [dom-vs-ssr-side-by-side.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/dom-vs-ssr-side-by-side.md)
-16. [component-slot-dom-vs-ssr.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/component-slot-dom-vs-ssr.md)
+1. [compiler-core-overview.md](./compiler-core/compiler-core-overview.md)
+2. [template-ast-flow.md](./compiler-core/template-ast-flow.md)
+3. [vfor-component-slot-ast-flow.md](./compiler-core/vfor-component-slot-ast-flow.md)
+4. [slot-outlet-and-slots-relation.md](./compiler-core/slot-outlet-and-slots-relation.md)
+5. [vif-vfor-ast-flow.md](./compiler-core/vif-vfor-ast-flow.md)
+6. [compiler-dom-on-top-of-compiler-core.md](./compiler-dom/compiler-dom-on-top-of-compiler-core.md)
+7. [compiler-dom-source-walkthrough.md](./compiler-dom/compiler-dom-source-walkthrough.md)
+8. [compiler-sfc-overview.md](./compiler-sfc/compiler-sfc-overview.md)
+9. [script-setup-macros-and-runtime.md](./compiler-sfc/script-setup-macros-and-runtime.md)
+10. [binding-metadata-and-template-identifiers.md](./compiler-sfc/binding-metadata-and-template-identifiers.md)
+11. [props-destructure-and-type-resolution.md](./compiler-sfc/props-destructure-and-type-resolution.md)
+12. [top-level-await-and-css-vars.md](./compiler-sfc/top-level-await-and-css-vars.md)
+13. [compiler-ssr-on-top-of-compiler-core.md](./compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
+14. [compiler-ssr-source-walkthrough.md](./compiler-ssr/compiler-ssr-source-walkthrough.md)
+15. [dom-vs-ssr-side-by-side.md](./compiler-compare/dom-vs-ssr-side-by-side.md)
+16. [component-slot-dom-vs-ssr.md](./compiler-compare/component-slot-dom-vs-ssr.md)
 
 ---
 
@@ -48,7 +48,7 @@
 
 ### 2.1 `compiler-core` 总览
 
-- [compiler-core-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/compiler-core-overview.md)
+- [compiler-core-overview.md](./compiler-core/compiler-core-overview.md)
 
 适合什么时候看：
 
@@ -64,7 +64,7 @@
 
 ### 2.2 基础 AST 案例
 
-- [template-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/template-ast-flow.md)
+- [template-ast-flow.md](./compiler-core/template-ast-flow.md)
 
 适合什么时候看：
 
@@ -79,7 +79,7 @@
 
 ### 2.3 复杂 AST 案例
 
-- [vfor-component-slot-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/vfor-component-slot-ast-flow.md)
+- [vfor-component-slot-ast-flow.md](./compiler-core/vfor-component-slot-ast-flow.md)
 
 适合什么时候看：
 
@@ -95,7 +95,7 @@
 
 ### 2.4 slot 对应关系
 
-- [slot-outlet-and-slots-relation.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/slot-outlet-and-slots-relation.md)
+- [slot-outlet-and-slots-relation.md](./compiler-core/slot-outlet-and-slots-relation.md)
 
 适合什么时候看：
 
@@ -111,7 +111,7 @@
 
 ### 2.5 双结构型指令叠加
 
-- [vif-vfor-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/vif-vfor-ast-flow.md)
+- [vif-vfor-ast-flow.md](./compiler-core/vif-vfor-ast-flow.md)
 
 适合什么时候看：
 
@@ -129,8 +129,8 @@
 
 ### 3.1 DOM 平台扩展
 
-- [compiler-dom-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-on-top-of-compiler-core.md)
-- [compiler-dom-source-walkthrough.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-source-walkthrough.md)
+- [compiler-dom-on-top-of-compiler-core.md](./compiler-dom/compiler-dom-on-top-of-compiler-core.md)
+- [compiler-dom-source-walkthrough.md](./compiler-dom/compiler-dom-source-walkthrough.md)
 
 适合什么时候看：
 
@@ -151,8 +151,8 @@
 
 ### 3.2 SSR 平台扩展
 
-- [compiler-ssr-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
-- [compiler-ssr-source-walkthrough.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-source-walkthrough.md)
+- [compiler-ssr-on-top-of-compiler-core.md](./compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
+- [compiler-ssr-source-walkthrough.md](./compiler-ssr/compiler-ssr-source-walkthrough.md)
 
 适合什么时候看：
 
@@ -171,11 +171,11 @@
 
 ### 3.3 SFC 编排层
 
-- [compiler-sfc-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/compiler-sfc-overview.md)
-- [script-setup-macros-and-runtime.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/script-setup-macros-and-runtime.md)
-- [binding-metadata-and-template-identifiers.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/binding-metadata-and-template-identifiers.md)
-- [props-destructure-and-type-resolution.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/props-destructure-and-type-resolution.md)
-- [top-level-await-and-css-vars.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/top-level-await-and-css-vars.md)
+- [compiler-sfc-overview.md](./compiler-sfc/compiler-sfc-overview.md)
+- [script-setup-macros-and-runtime.md](./compiler-sfc/script-setup-macros-and-runtime.md)
+- [binding-metadata-and-template-identifiers.md](./compiler-sfc/binding-metadata-and-template-identifiers.md)
+- [props-destructure-and-type-resolution.md](./compiler-sfc/props-destructure-and-type-resolution.md)
+- [top-level-await-and-css-vars.md](./compiler-sfc/top-level-await-and-css-vars.md)
 
 适合什么时候看：
 
@@ -200,7 +200,7 @@
 
 ### 4.1 DOM vs SSR：基础结构对照
 
-- [dom-vs-ssr-side-by-side.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/dom-vs-ssr-side-by-side.md)
+- [dom-vs-ssr-side-by-side.md](./compiler-compare/dom-vs-ssr-side-by-side.md)
 
 适合什么时候看：
 
@@ -213,7 +213,7 @@
 
 ### 4.2 DOM vs SSR：component + slot 对照
 
-- [component-slot-dom-vs-ssr.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/component-slot-dom-vs-ssr.md)
+- [component-slot-dom-vs-ssr.md](./compiler-compare/component-slot-dom-vs-ssr.md)
 
 适合什么时候看：
 
@@ -298,32 +298,32 @@
 
 直接读：
 
-1. [compiler-core-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/compiler-core-overview.md)
-2. [template-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/template-ast-flow.md)
+1. [compiler-core-overview.md](./compiler-core/compiler-core-overview.md)
+2. [template-ast-flow.md](./compiler-core/template-ast-flow.md)
 
 ### 6.2 你想看 AST 是怎么变化的
 
 读：
 
-1. [template-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/template-ast-flow.md)
-2. [vfor-component-slot-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/vfor-component-slot-ast-flow.md)
-3. [vif-vfor-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/vif-vfor-ast-flow.md)
+1. [template-ast-flow.md](./compiler-core/template-ast-flow.md)
+2. [vfor-component-slot-ast-flow.md](./compiler-core/vfor-component-slot-ast-flow.md)
+3. [vif-vfor-ast-flow.md](./compiler-core/vif-vfor-ast-flow.md)
 
 ### 6.3 你想搞清楚 slot
 
 读：
 
-1. [slot-outlet-and-slots-relation.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/slot-outlet-and-slots-relation.md)
-2. [component-slot-dom-vs-ssr.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/component-slot-dom-vs-ssr.md)
+1. [slot-outlet-and-slots-relation.md](./compiler-core/slot-outlet-and-slots-relation.md)
+2. [component-slot-dom-vs-ssr.md](./compiler-compare/component-slot-dom-vs-ssr.md)
 
 ### 6.4 你想搞清楚 DOM 和 SSR 差异
 
 读：
 
-1. [compiler-dom-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-on-top-of-compiler-core.md)
-2. [compiler-ssr-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
-3. [dom-vs-ssr-side-by-side.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/dom-vs-ssr-side-by-side.md)
-4. [component-slot-dom-vs-ssr.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/component-slot-dom-vs-ssr.md)
+1. [compiler-dom-on-top-of-compiler-core.md](./compiler-dom/compiler-dom-on-top-of-compiler-core.md)
+2. [compiler-ssr-on-top-of-compiler-core.md](./compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
+3. [dom-vs-ssr-side-by-side.md](./compiler-compare/dom-vs-ssr-side-by-side.md)
+4. [component-slot-dom-vs-ssr.md](./compiler-compare/component-slot-dom-vs-ssr.md)
 
 ---
 

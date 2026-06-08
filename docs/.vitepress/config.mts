@@ -4,6 +4,19 @@ export default defineConfig({
     title: "前端学习文档",
     description: "按 HTML、CSS、JavaScript、React、Vue 模块整理的学习与项目文档",
     lang: "zh-CN",
+    ignoreDeadLinks: [(url) => url.startsWith("/Users/")],
+    markdown: {
+        config(md) {
+            const defaultFence = md.renderer.rules.fence;
+            if (defaultFence) {
+                md.renderer.rules.fence = (tokens, idx, options, env, self) =>
+                    defaultFence(tokens, idx, options, env, self).replace("<pre", "<pre v-pre");
+            }
+
+            md.renderer.rules.code_inline = (tokens, idx) =>
+                `<code v-pre>${md.utils.escapeHtml(tokens[idx].content)}</code>`;
+        },
+    },
     themeConfig: {
         nav: [
             { text: "首页", link: "/" },
@@ -82,6 +95,7 @@ export default defineConfig({
                     { text: "api：API 示例与面试题", link: "/react/api/" },
                     { text: "router：路由", link: "/react/router/" },
                     { text: "source：源码", link: "/react/source/" },
+                    { text: "React TS 源码复刻", link: "/react/source/react-ts-source" },
                     { text: "zustand：状态管理", link: "/react/zustand/" },
                     { text: "rtkq：数据请求与缓存", link: "/react/rtkq/" },
                 ],
@@ -94,7 +108,7 @@ export default defineConfig({
                     { text: "router：Vue Router", link: "/vue/router/" },
                     { text: "pinia：状态管理", link: "/vue/pinia/" },
                     { text: "source：源码", link: "/vue/source/" },
-                    { text: "Reactivity 原理", link: "/vue/source/reactivity-overview" },
+                    { text: "Reactivity 原理", link: "/vue/source/reactivity/reactivity-overview" },
                 ],
             },
         ],

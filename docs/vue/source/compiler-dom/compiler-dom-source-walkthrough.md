@@ -6,7 +6,7 @@
 
 这篇默认你已经看过：
 
-- [compiler-dom 如何扩展 compiler-core](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-on-top-of-compiler-core.md)
+- [compiler-dom 如何扩展 compiler-core](./compiler-dom-on-top-of-compiler-core.md)
 
 ---
 
@@ -347,8 +347,8 @@ directiveTransforms
 
 接下来最顺的阅读路径是：
 
-1. [compiler-ssr 如何复用 compiler-core](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
-2. [DOM 和 SSR 并排对照](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-compare/dom-vs-ssr-side-by-side.md)
+1. [compiler-ssr 如何复用 compiler-core](../compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
+2. [DOM 和 SSR 并排对照](../compiler-compare/dom-vs-ssr-side-by-side.md)
 
 然后再回源码读：
 

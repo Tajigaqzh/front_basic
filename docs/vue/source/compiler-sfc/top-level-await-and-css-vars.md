@@ -405,6 +405,6 @@ compileTemplate(ssr)
 
 如果你已经看懂这篇，接下来最值得继续的是：
 
-1. [compiler-sfc 总览](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/compiler-sfc-overview.md)
-2. [props 解构重写与类型转运行时 props](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/props-destructure-and-type-resolution.md)
-3. [script setup 宏如何落成运行时代码](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/script-setup-macros-and-runtime.md)
+1. [compiler-sfc 总览](./compiler-sfc-overview.md)
+2. [props 解构重写与类型转运行时 props](./props-destructure-and-type-resolution.md)
+3. [script setup 宏如何落成运行时代码](./script-setup-macros-and-runtime.md)

@@ -632,7 +632,7 @@ compiler-core
 
 如果你想先看底层总览，再回来看这篇，建议先读：
 
-- [compiler-core-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/compiler-core-overview.md)
+- [compiler-core-overview.md](../compiler-core/compiler-core-overview.md)
 
 ---
 
@@ -641,16 +641,16 @@ compiler-core
 这篇最好和前面的几篇一起用：
 
 - 看核心总流程：
-  - [compiler-core-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/compiler-core-overview.md)
+  - [compiler-core-overview.md](../compiler-core/compiler-core-overview.md)
 
 - 看基础 AST 变化：
-  - [template-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/template-ast-flow.md)
+  - [template-ast-flow.md](../compiler-core/template-ast-flow.md)
 
 - 看复杂 AST 变化：
-  - [vfor-component-slot-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/vfor-component-slot-ast-flow.md)
+  - [vfor-component-slot-ast-flow.md](../compiler-core/vfor-component-slot-ast-flow.md)
 
 - 看 slot 提供方 / 消费方关系：
-  - [slot-outlet-and-slots-relation.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/slot-outlet-and-slots-relation.md)
+  - [slot-outlet-and-slots-relation.md](../compiler-core/slot-outlet-and-slots-relation.md)
 
 这篇则补上：
 

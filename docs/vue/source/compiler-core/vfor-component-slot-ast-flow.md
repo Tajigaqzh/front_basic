@@ -589,7 +589,7 @@ renderList(_ctx.list, item =>
 
 ## 14. 和基础例子的最大区别
 
-和基础例子 [template-ast-flow.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/template-ast-flow.md) 相比，这个复杂例子多出来的关键点只有两个：
+和基础例子 [template-ast-flow.md](./template-ast-flow.md) 相比，这个复杂例子多出来的关键点只有两个：
 
 1. `v-for` 会把单节点改造成 `renderList(...)`
 2. 组件 children 会从“子节点数组”切换成“slots 对象”

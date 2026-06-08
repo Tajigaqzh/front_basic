@@ -488,8 +488,8 @@ emits: mergeModels(
 
 如果这篇你已经看顺了，下一步建议接：
 
-1. [bindingMetadata 和模板标识符分析](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/binding-metadata-and-template-identifiers.md)
-2. [compiler-sfc 总览](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-sfc/compiler-sfc-overview.md)
+1. [bindingMetadata 和模板标识符分析](./binding-metadata-and-template-identifiers.md)
+2. [compiler-sfc 总览](./compiler-sfc-overview.md)
 
 然后再回源码细读：
 

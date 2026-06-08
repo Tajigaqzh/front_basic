@@ -6,9 +6,9 @@
 
 前面的文档已经分别讲过：
 
-- [compiler-core-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/compiler-core-overview.md)
-- [compiler-dom-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-on-top-of-compiler-core.md)
-- [compiler-ssr-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
+- [compiler-core-overview.md](../compiler-core/compiler-core-overview.md)
+- [compiler-dom-on-top-of-compiler-core.md](../compiler-dom/compiler-dom-on-top-of-compiler-core.md)
+- [compiler-ssr-on-top-of-compiler-core.md](../compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
 
 这篇不再分开讲，而是把两边放在一起对照。
 
@@ -511,11 +511,11 @@ ssrRender() => string push logic
 建议顺序：
 
 1. 看总览：
-   - [compiler-core-overview.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-core/compiler-core-overview.md)
+   - [compiler-core-overview.md](../compiler-core/compiler-core-overview.md)
 
 2. 看平台扩展：
-   - [compiler-dom-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-dom/compiler-dom-on-top-of-compiler-core.md)
-   - [compiler-ssr-on-top-of-compiler-core.md](/Users/nwyzx/Desktop/project/source/front_basic/docs/vue/source/compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
+   - [compiler-dom-on-top-of-compiler-core.md](../compiler-dom/compiler-dom-on-top-of-compiler-core.md)
+   - [compiler-ssr-on-top-of-compiler-core.md](../compiler-ssr/compiler-ssr-on-top-of-compiler-core.md)
 
 3. 再回来看这篇并排对照
 
