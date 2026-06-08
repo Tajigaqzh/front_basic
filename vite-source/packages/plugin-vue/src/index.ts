@@ -62,8 +62,10 @@ const vueRequestRE = /\.vue($|\?)/
  *   分发给 main/template/style 模块处理。
  */
 export default function vuePlugin(rawOptions: Options = {}): ViteLikePlugin {
+  // 插件实例创建时清掉 script 缓存，避免上一次 dev/build 的 SFC 结果影响新服务。
   clearScriptCache()
 
+  // options 会在 configResolved 里用最终 Vite 配置补齐，这里先给出可运行默认值。
   const options: ResolvedOptions = {
     ...rawOptions,
     root: process.cwd(),
@@ -76,6 +78,11 @@ export default function vuePlugin(rawOptions: Options = {}): ViteLikePlugin {
     name: 'vite:vue',
 
     config(config) {
+      /**
+       * config 是最早执行的插件 hook。
+       * Vue 插件在这里补 runtime compile flags，让浏览器代码里不会再读取
+       * Node 专属的 process.env。
+       */
       return {
         define: {
           __VUE_OPTIONS_API__: true,
@@ -96,6 +103,7 @@ export default function vuePlugin(rawOptions: Options = {}): ViteLikePlugin {
     },
 
     configResolved(config) {
+      // configResolved 能读到 root/build/css/server 等最终值，适合更新插件内部状态。
       options.root = config.root
       options.isProduction = Boolean(config.isProduction)
       options.sourceMap = config.command === 'build' ? Boolean(config.build?.sourcemap) : true
@@ -103,52 +111,66 @@ export default function vuePlugin(rawOptions: Options = {}): ViteLikePlugin {
     },
 
     resolveId(id) {
+      // export helper 是插件内部虚拟模块，后续 load 会返回 helperCode。
       if (id === EXPORT_HELPER_ID) return id
+      // .vue?vue&type=xxx 是 transformMain 生成的子请求，直接声明“我能处理”。
       if (parseVueRequest(id).query.vue) return id
       return null
     },
 
     load(id) {
+      // 虚拟 helper 模块不对应真实文件，必须由 load 钩子提供源码。
       if (id === EXPORT_HELPER_ID) return helperCode
 
       const { filename, query } = parseVueRequest(id)
       if (!query.vue) return null
 
+      // 子请求都复用同一个 SFC descriptor，避免每个 block 重复 parse .vue 文件。
       const descriptor = getDescriptor(filename, options)
       if (query.type === 'template') {
+        // template 子模块先返回 template block 内容，transform 再编译成 render 函数。
         return readBlockContent(filename, descriptor.template, this)
       }
       if (query.type === 'style') {
+        // style 子模块返回对应 index 的 style block 内容。
         return readBlockContent(filename, descriptor.styles[query.index ?? 0], this)
       }
       if (query.type === 'script') {
+        // script 子请求主要用于对齐官方结构；主模块通常会直接内联 script。
         return descriptor.script?.content ?? descriptor.scriptSetup?.content ?? ''
       }
       if (query.type === 'custom') {
+        // custom block 交给后续 transform 包成普通 ESM。
         return readBlockContent(filename, descriptor.customBlocks[query.index ?? 0], this)
       }
       return null
     },
 
     async transform(code, id) {
+      // 只处理 .vue 主请求和 .vue?vue 子请求。
       if (!vueRequestRE.test(id)) return null
 
       const { filename, query } = parseVueRequest(id)
+      // include/exclude 是用户控制插件作用范围的常见选项。
       if (rawOptions.include && !rawOptions.include.test(filename)) return null
       if (rawOptions.exclude?.test(filename)) return null
 
       if (!query.vue) {
+        // 主请求：把完整 SFC 拆成 imports + export default 组件对象。
         return transformMain(code, filename, options, this)
       }
 
       const descriptor = getDescriptor(filename, options)
       if (query.type === 'template') {
+        // template 子请求：编译成 render 函数模块。
         return transformTemplateAsModule(code, filename, descriptor, options, this)
       }
       if (query.type === 'style') {
+        // style 子请求：编译 scoped/css vars，并在 dev 中变成可注入 CSS 的 JS。
         return transformStyle(code, descriptor, query.index ?? 0, options)
       }
       if (query.type === 'custom') {
+        // 阅读版把 custom block 简化成导出原始字符串。
         return {
           code: [
             `// custom block <${query.blockType ?? descriptor.customBlocks[query.index ?? 0]?.type ?? 'custom'}>`,
@@ -160,6 +182,7 @@ export default function vuePlugin(rawOptions: Options = {}): ViteLikePlugin {
     },
 
     handleHotUpdate(ctx) {
+      // Vite server 文件变化后会调用这里，Vue 插件可按 block 精确返回受影响模块。
       return handleHotUpdate(ctx as any, options)
     },
   }
@@ -170,9 +193,12 @@ function readBlockContent(
   block: { content?: string; src?: string } | null | undefined,
   ctx: PluginContext,
 ): string {
+  // 没有对应 block 时返回空字符串，让子请求仍然是合法模块。
   if (!block) return ''
+  // 普通内联 block 直接使用 descriptor 里的 content。
   if (!block.src) return block.content ?? ''
 
+  // <style src="./a.css"> 这类外部资源要加入 watch，外部文件变化也能触发 HMR。
   const src = path.resolve(path.dirname(filename), block.src)
   ctx.addWatchFile(src)
   return fs.readFileSync(src, 'utf-8')
