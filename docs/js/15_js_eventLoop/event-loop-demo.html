@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Event Loop Demo</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #1f2937;
+        background: #f5f7fb;
+      }
+
+      main {
+        width: min(960px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 32px 0;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        line-height: 1.25;
+      }
+
+      p {
+        margin: 0 0 16px;
+        color: #4b5563;
+        line-height: 1.7;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 20px 0;
+      }
+
+      button {
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        padding: 8px 12px;
+        color: #111827;
+        background: #ffffff;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: #eef2ff;
+        border-color: #818cf8;
+      }
+
+      .status {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .panel {
+        border: 1px solid #d8dee9;
+        border-radius: 8px;
+        padding: 14px;
+        background: #ffffff;
+      }
+
+      .panel strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+      }
+
+      .paint-box {
+        width: 100%;
+        height: 72px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        color: #ffffff;
+        background: #2563eb;
+        transition: background 160ms ease;
+      }
+
+      .paint-box.loading {
+        background: #dc2626;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      pre {
+        min-height: 420px;
+        max-height: 520px;
+        margin: 0;
+        padding: 14px;
+        overflow: auto;
+        border: 1px solid #d8dee9;
+        border-radius: 8px;
+        color: #e5e7eb;
+        background: #111827;
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+
+      code {
+        color: #4338ca;
+      }
+
+      @media (max-width: 760px) {
+        .status,
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Event Loop Demo</h1>
+      <p>
+        点击按钮后观察日志顺序：同步代码先执行，微任务在当前宏任务结束后执行，定时器宏任务更晚执行，<code>requestAnimationFrame</code>
+        通常在下一次渲染前执行。
+      </p>
+
+      <div class="toolbar">
+        <button id="runOrder">运行执行顺序示例</button>
+        <button id="runRender">运行渲染阻塞示例</button>
+        <button id="clearLog">清空日志</button>
+      </div>
+
+      <div class="status">
+        <section class="panel">
+          <strong>同步代码</strong>
+          立即进入调用栈执行。
+        </section>
+        <section class="panel">
+          <strong>微任务</strong>
+          当前宏任务结束后清空。
+        </section>
+        <section class="panel">
+          <strong>宏任务</strong>
+          下一轮事件循环再执行。
+        </section>
+      </div>
+
+      <div class="layout">
+        <section class="panel">
+          <strong>渲染观察区</strong>
+          <p>
+            “渲染阻塞示例”会先把下面区域改成红色，再阻塞主线程。你会看到视觉更新需要等同步阻塞结束后才出现。
+          </p>
+          <div id="paintBox" class="paint-box">ready</div>
+        </section>
+
+        <section>
+          <pre id="log"></pre>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const logEl = document.querySelector('#log')
+      const paintBox = document.querySelector('#paintBox')
+      let index = 0
+
+      function log(message) {
+        index += 1
+        const time = new Date().toLocaleTimeString()
+        logEl.textContent += `${String(index).padStart(2, '0')}. [${time}] ${message}\n`
+        logEl.scrollTop = logEl.scrollHeight
+      }
+
+      function clearLog() {
+        index = 0
+        logEl.textContent = ''
+      }
+
+      function runOrderDemo() {
+        clearLog()
+        log('script start：当前点击事件本身是一个宏任务')
+
+        setTimeout(() => {
+          log('setTimeout：新的宏任务')
+
+          Promise.resolve().then(() => {
+            log('Promise in setTimeout：定时器宏任务结束前的微任务')
+          })
+        }, 0)
+
+        requestAnimationFrame(() => {
+          log('requestAnimationFrame：通常在下一次渲染前执行')
+        })
+
+        queueMicrotask(() => {
+          log('queueMicrotask：微任务')
+        })
+
+        Promise.resolve().then(() => {
+          log('Promise.then：微任务')
+        })
+
+        async function runAsync() {
+          log('async function：await 之前同步执行')
+          await Promise.resolve()
+          log('async function：await 之后作为微任务执行')
+        }
+
+        runAsync()
+
+        log('script end：当前宏任务同步代码结束')
+      }
+
+      function blockMainThread(duration) {
+        const start = performance.now()
+
+        while (performance.now() - start < duration) {
+          // Intentionally block the main thread for the demo.
+        }
+      }
+
+      function runRenderDemo() {
+        clearLog()
+        paintBox.classList.remove('loading')
+        paintBox.textContent = 'ready'
+
+        log('开始：修改 DOM 为 loading')
+        paintBox.classList.add('loading')
+        paintBox.textContent = 'loading'
+
+        Promise.resolve().then(() => {
+          log('微任务执行：浏览器仍然还没有机会渲染')
+        })
+
+        log('开始阻塞主线程 2000ms')
+        blockMainThread(2000)
+        log('同步阻塞结束：当前宏任务即将结束')
+
+        setTimeout(() => {
+          log('新的宏任务：恢复 ready')
+          paintBox.classList.remove('loading')
+          paintBox.textContent = 'ready'
+        }, 800)
+      }
+
+      document.querySelector('#runOrder').addEventListener('click', runOrderDemo)
+      document.querySelector('#runRender').addEventListener('click', runRenderDemo)
+      document.querySelector('#clearLog').addEventListener('click', clearLog)
+
+      log('页面已加载，可以点击按钮运行示例')
+    </script>
+  </body>
+</html>
