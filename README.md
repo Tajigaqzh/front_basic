@@ -204,3 +204,7 @@ pnpm --dir vite-source build:vue
   手写 Promise 实现与测试，用于理解 Promise/A+、then 链式调用、状态流转和异步调度。
 - `ai_flow_output/backend`、`ai_flow_output/frontend`
   AI Flow 的服务端和 React 前端示例，统一从根目录旧 `backend` / `frontend` 迁移到 `ai_flow_output` 下管理。
+
+开源项目
+
+
