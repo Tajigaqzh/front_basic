@@ -20,3 +20,7 @@ docs/.vitepress/cache/
 coverage/
 *.log
 *.tsbuildinfo
+
+target/
+**/target/
+*.class

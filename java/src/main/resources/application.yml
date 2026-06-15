@@ -1,0 +1,8 @@
+server:
+  # Java 后端 HTTP 和 WebSocket 共用端口。
+  port: 8080
+
+spring:
+  application:
+    # 日志中展示的应用名称。
+    name: collab-java-server
