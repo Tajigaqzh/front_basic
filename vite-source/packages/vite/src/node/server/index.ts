@@ -38,6 +38,10 @@ export interface ViteDevServer {
   close(): Promise<void>
 }
 
+/**
+ * 创建服务器
+ * @param inlineConfig
+ */
 export function createServer(inlineConfig: InlineConfig = {}): Promise<ViteDevServer> {
   return _createServer(inlineConfig)
 }
@@ -55,10 +59,17 @@ export async function _createServer(inlineConfig: InlineConfig = {}): Promise<Vi
    * 这四个对象随后被挂到 ViteDevServer 上，所有 middleware 和插件都共享它们。
    */
   const config = await resolveConfig(inlineConfig, 'serve')
+
+  // 插件容器
   const pluginContainer = await createPluginContainer(config)
+
+  // URL依赖关系
   const moduleGraph = new ModuleGraph()
+
+  //  依赖预构件
   const depsOptimizer = await optimizeDeps(config)
   ;(globalThis as any).__vite_source_current_deps_optimizer = depsOptimizer
+
   const pendingRequests = new Map()
 
   let server!: ViteDevServer
@@ -71,8 +82,9 @@ export async function _createServer(inlineConfig: InlineConfig = {}): Promise<Vi
   const httpServer = createHttpServer(async (req: any, res: any) => {
     await handleRequest(req, res)
   })
-
+  //   ws
   const ws = createWebSocketServer(httpServer)
+  //   观察器
   const watcher = new DevServerWatcher()
 
   server = {
@@ -152,6 +164,11 @@ export async function _createServer(inlineConfig: InlineConfig = {}): Promise<Vi
   return server
 }
 
+/**
+ * 观察
+ * @param server
+ * @param watcher
+ */
 function watchRoot(server: ViteDevServer, watcher: DevServerWatcher): void {
   try {
     fs.watch(server.config.root, { recursive: true }, (_event: string, filename?: string) => {
@@ -170,6 +187,11 @@ function watchRoot(server: ViteDevServer, watcher: DevServerWatcher): void {
   }
 }
 
+/**
+ * 创建中间件
+ * @param server
+ * @param middlewares
+ */
 function createMiddlewareRunner(server: ViteDevServer, middlewares: Middleware[]): (req: any, res: any) => Promise<void> {
   const handleError = errorMiddleware(server)
 

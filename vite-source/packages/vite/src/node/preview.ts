@@ -4,6 +4,10 @@ import path from 'node:path'
 import { createServer as createHttpServer } from 'node:http'
 import { resolveConfig, type InlineConfig } from './config.js'
 
+/**
+ * 预览方法
+ * @param inlineConfig
+ */
 export async function preview(inlineConfig: InlineConfig = {}) {
   const config = await resolveConfig(inlineConfig, 'serve')
   const outDir = path.resolve(config.root, inlineConfig.preview?.outDir ?? config.preview.outDir)

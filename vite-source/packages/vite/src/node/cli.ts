@@ -21,7 +21,9 @@ interface ParsedCli {
  */
 async function main(): Promise<void> {
   const started = performance.now()
+  // 解析参数
   const parsed = parseCli(process.argv.slice(2))
+  //   初始化配置
   const inlineConfig = toInlineConfig(parsed)
 
   if (parsed.options.version) {
