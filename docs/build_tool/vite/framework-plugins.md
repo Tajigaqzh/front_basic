@@ -6,16 +6,16 @@
 
 ```mermaid
 flowchart TD
-  A[浏览器请求 /src/App.vue] --> B[plugin-vue transform 主请求]
-  B --> C[parse SFC descriptor]
-  C --> D[生成 script: const _sfc_main]
-  C --> E[生成 template 子请求 import]
-  C --> F[生成 style 子请求 import]
-  C --> G[export default _export_sfc]
-  E --> H[/src/App.vue?vue&type=template]
-  F --> I[/src/App.vue?vue&type=style&index=0]
-  H --> J[compileTemplate -> render]
-  I --> K[compileStyle -> CSS as JS]
+  A["浏览器请求 /src/App.vue"] --> B["plugin-vue transform 主请求"]
+  B --> C["parse SFC descriptor"]
+  C --> D["生成 script: const _sfc_main"]
+  C --> E["生成 template 子请求 import"]
+  C --> F["生成 style 子请求 import"]
+  C --> G["export default _export_sfc"]
+  E --> H["/src/App.vue?vue&type=template"]
+  F --> I["/src/App.vue?vue&type=style&index=0"]
+  H --> J["compileTemplate -> render"]
+  I --> K["compileStyle -> CSS as JS"]
 ```
 
 ## Vue 主请求如何变成 ESM

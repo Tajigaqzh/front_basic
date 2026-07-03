@@ -118,7 +118,7 @@ const sayHi = function (name) {
 
 ### 匿名函数和具名函数表达式
 
-函数表达式可以是匿名函数：
+函数表达式可以是匿名函数。
 
 ```js
 const fn = function () {

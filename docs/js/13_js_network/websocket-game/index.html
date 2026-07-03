@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebSocket 小游戏</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0f1220;
+        color: #e5e7eb;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at top, #1c2440, #0f1220 58%);
+      }
+      main {
+        width: min(920px, calc(100vw - 32px));
+      }
+      .panel {
+        display: grid;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .board-wrap {
+        position: relative;
+      }
+      canvas {
+        width: 100%;
+        aspect-ratio: 1;
+        display: block;
+        border-radius: 12px;
+        background: linear-gradient(180deg, #11182b, #0b1020);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+      }
+      .hint {
+        font-size: 14px;
+        color: #aab2d5;
+      }
+      .status {
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel">
+        <div class="row">
+          <div class="badge"><span class="status" id="status">disconnected</span></div>
+          <div class="badge">Player: <span id="playerId">-</span></div>
+          <div class="badge">Online: <span id="count">0</span></div>
+        </div>
+        <div class="hint">方向键移动方块。打开多个标签页可以看到所有玩家同步更新。</div>
+      </section>
+      <section class="board-wrap">
+        <canvas id="board" width="600" height="600"></canvas>
+      </section>
+    </main>
+    <script src="./client.js"></script>
+  </body>
+  </html>

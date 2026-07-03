@@ -1,9 +1,5 @@
 <template>
-  <div>
-    <div>
-      {{pageData}}
-    </div>
-  </div>
+  <input @keyup.[1]="test">
 </template>
 
 
@@ -20,10 +16,7 @@ let pageData = reactive({
 
 
 const changeReactiveData = () => {
-  pageData = reactive({
-    name:"李四",
-    age: 20
-  });
+
 
 }
 

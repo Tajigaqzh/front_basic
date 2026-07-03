@@ -60,7 +60,9 @@ export async function optimizeDeps(
    */
   const cacheDir = getDepsCacheDir(config)
   const metadataFile = path.join(cacheDir, '_metadata.json')
+  //   扫描依赖数组
   const deps = await scanDeps(config)
+  //   创建hash
   const hash = await createOptimizerHash(config, deps)
 
   if (!force && fs.existsSync(metadataFile)) {
@@ -76,6 +78,7 @@ export async function optimizeDeps(
     config.logger.info(`[optimizer] stale deps metadata, rebuilding: ${slash(metadataFile)}`)
   }
 
+  // deps
   await fsp.rm(cacheDir, { recursive: true, force: true })
   await fsp.mkdir(cacheDir, { recursive: true })
 
@@ -103,6 +106,7 @@ export async function optimizeDeps(
     optimized,
   }
 
+  // 写到.vite/deps/_metadata.json文件中
   await fsp.writeFile(metadataFile, JSON.stringify(metadata, null, 2))
   config.logger.info(`[optimizer] optimized deps: ${deps.length ? deps.join(', ') : '(none)'}`)
   return createDepsOptimizer(metadata, metadataFile)
@@ -110,6 +114,11 @@ export async function optimizeDeps(
 
 export { scanDeps, getDepsCacheDir }
 
+/**
+ * 创建hash
+ * @param config
+ * @param deps
+ */
 async function createOptimizerHash(config: ResolvedConfig, deps: string[]): Promise<string> {
   /**
    * 官方 optimizer 的 hash 会综合配置、lockfile、package.json、依赖入口等。
@@ -140,6 +149,11 @@ async function readIfExists(file: string): Promise<string> {
   }
 }
 
+/**
+ * 创建依赖优化器
+ * @param metadata
+ * @param metadataFile
+ */
 function createDepsOptimizer(
   metadata: DepOptimizationMetadata,
   metadataFile: string,

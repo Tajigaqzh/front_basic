@@ -5,6 +5,7 @@
 ## 当前文档
 
 - [网络](./network.md)
+- [WebSocket 小游戏](./websocket-game/index.md)
 
 ## 内容范围
 
@@ -20,6 +21,7 @@
 - 文件上传和下载
 - SSE
 - WebSocket
+- WebSocket 游戏示例
 - WebRTC
 - WebTransport
 - `sendBeacon`
